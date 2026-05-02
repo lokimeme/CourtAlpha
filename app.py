@@ -28,13 +28,13 @@ st.markdown("""
 
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'data/courtalpha.duckdb')
+DB_NAME = 'courtalpha_deploy.duckdb'
 
 @st.cache_data
 def load_data():
     from pathlib import Path
     base_dir = Path(__file__).parent
-    db_path = base_dir / "data" / "courtalpha.duckdb"
+    db_path = base_dir / "data" / DB_NAME
     
     if not db_path.exists():
         st.error(f"DB not found at: {db_path.absolute()}")
@@ -70,16 +70,15 @@ def load_data():
 
 @st.cache_data
 def load_shot_data(player_name):
-    base_dir = os.path.dirname(__file__)
-    db_path = os.path.join(base_dir, 'data/courtalpha.duckdb')
-    con = duckdb.connect(db_path, read_only=True)
+    from pathlib import Path
+    base_dir = Path(__file__).parent
+    db_path = base_dir / "data" / DB_NAME
+    con = duckdb.connect(str(db_path), read_only=True)
     
     query = """
-        SELECT LOC_X, LOC_Y, SHOT_MADE_FLAG 
-        FROM play_by_play 
-        WHERE PLAYER_NAME = ? 
-          AND LOC_X IS NOT NULL 
-          AND ACTION_TYPE IN ('Made Shot', 'Missed Shot')
+        SELECT BIN_X as LOC_X, BIN_Y as LOC_Y, SHOT_COUNT 
+        FROM player_shot_density 
+        WHERE PLAYER_NAME = ?
     """
     shots = con.execute(query, [player_name]).df()
     con.close()
@@ -240,9 +239,9 @@ else:
                 shot_df = load_shot_data(player_name)
                 if not shot_df.empty:
                     heatmap = alt.Chart(shot_df).mark_rect().encode(
-                        x=alt.X('LOC_X:Q', bin=alt.Bin(maxbins=30), title="Court Width"),
-                        y=alt.Y('LOC_Y:Q', bin=alt.Bin(maxbins=30), title="Court Length"),
-                        color=alt.Color('count():Q', scale=alt.Scale(scheme='inferno'), title="Shot Density")
+                        x=alt.X('LOC_X:Q', title="Court Width"),
+                        y=alt.Y('LOC_Y:Q', title="Court Length"),
+                        color=alt.Color('SHOT_COUNT:Q', scale=alt.Scale(scheme='inferno'), title="Shot Density")
                     ).properties(height=400)
                     st.altair_chart(heatmap, use_container_width=True)
                 else:
