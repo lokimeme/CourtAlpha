@@ -6,10 +6,7 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 
 class BreakoutEngine:
-    """
-    Predictive Analytics for Player Development.
-    Identifies 'Breakout' candidates by comparing trajectories to physical peers.
-    """
+    
     def __init__(self, db_path='data/courtalpha.duckdb'):
         self.db_path = db_path
 
@@ -23,46 +20,24 @@ class BreakoutEngine:
     def get_breakout_candidates(self):
         con = duckdb.connect(self.db_path, read_only=True)
         
-        # Join metrics with metadata
-        query = """
-        SELECT 
-            m.PLAYER_NAME, 
-            m.SHRUNK_IMPACT, 
-            m.X_EFG_PCT, 
-            m.POSSESSIONS,
-            t.BIRTHDATE,
-            t.HEIGHT,
-            t.WEIGHT,
-            m.ARCHETYPE_NAME
-        FROM player_metrics m
-        JOIN player_metadata t ON m.PLAYER_NAME = t.PLAYER_NAME
-        """
+        query = 
         df = con.execute(query).df()
         con.close()
 
         if df.empty: return "No data available."
 
-        # Process Age and Physicals
         df['AGE'] = df['BIRTHDATE'].apply(self.calculate_age)
         
-        # Convert Height (e.g., 6-7) to inches
         def height_to_inches(h):
             try:
                 f, i = map(int, h.split('-'))
                 return f * 12 + i
-            except: return 78 # 6'6 average
+            except: return 78
             
         df['HEIGHT_IN'] = df['HEIGHT'].apply(height_to_inches)
 
-        # BREAKOUT LOGIC: 
-        # 1. Age < 24
-        # 2. Impact is already positive (>0)
-        # 3. High 'Elasticity' (High xEFG relative to usage/archetype)
-        
         candidates = df[df['AGE'] <= 24].copy()
         
-        # Calculate 'Breakout Score'
-        # Formula: (Impact * 0.4) + ((25 - Age) * 0.3) + (xEFG * 0.3)
         candidates['BREAKOUT_SCORE'] = (
             (candidates['SHRUNK_IMPACT'] * 0.4) + 
             ((25 - candidates['AGE']) * 2.0) + 
@@ -72,10 +47,7 @@ class BreakoutEngine:
         return candidates.sort_values(by='BREAKOUT_SCORE', ascending=False)
 
     def find_peer_trajectory(self, player_name):
-        """
-        Finds the 5 most similar historical physical peers to project future growth.
-        """
-        # (This would use NearestNeighbors on Height, Weight, and Archetype)
+        
         pass
 
 if __name__ == "__main__":

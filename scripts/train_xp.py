@@ -12,21 +12,7 @@ def train_xp_model():
     con = duckdb.connect(DB_PATH)
     
     print("Fetching training data (shots with location and results)...")
-    # We use SHOT_MADE_FLAG as our target (0 or 1)
-    df = con.execute("""
-        SELECT 
-            LOC_X, 
-            LOC_Y, 
-            SHOT_DISTANCE, 
-            SHOT_ANGLE, 
-            SHOT_ZONE, 
-            MICRO_ACTION,
-            SHOT_MADE_FLAG
-        FROM play_by_play 
-        WHERE ACTION_TYPE IN ('Made Shot', 'Missed Shot') 
-          AND LOC_X IS NOT NULL
-          AND SHOT_MADE_FLAG IS NOT NULL
-    """).df()
+    df = con.execute().df()
 
     if df.empty:
         print("Error: No data found for training.")
@@ -34,15 +20,11 @@ def train_xp_model():
 
     print(f"Training on {len(df)} shots...")
 
-    # Preprocessing: Convert SHOT_ZONE and MICRO_ACTION to dummy variables
     df = pd.get_dummies(df, columns=['SHOT_ZONE', 'MICRO_ACTION'])
     
-    # Define features and target
     X = df.drop('SHOT_MADE_FLAG', axis=1)
     y = df['SHOT_MADE_FLAG']
 
-    # Train XGBoost Classifier
-    # We want probabilities, so we use predict_proba later
     model = XGBClassifier(
         n_estimators=100,
         max_depth=5,
@@ -53,15 +35,10 @@ def train_xp_model():
     
     model.fit(X, y)
 
-    # Ensure model directory exists
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
     joblib.dump((model, X.columns.tolist()), MODEL_PATH)
     print(f"Model saved to {MODEL_PATH}")
 
-    # Calculate Expected Points (xP)
-    # xP = probability * point_value (2 or 3)
-    # Determine point value based on SHOT_ZONE
-    # Corner 3 and Above the Break 3 are 3pts, others are 2pts
     df['PROBABILITY'] = model.predict_proba(X)[:, 1]
     
     def get_points(row):
@@ -78,27 +55,13 @@ def train_xp_model():
         con.execute("ALTER TABLE play_by_play ADD COLUMN X_POINTS FLOAT")
     except: pass
 
-    # Prepare for bulk update
-    # We need a way to map back - we'll re-fetch the IDs
-    ids = con.execute("""
-        SELECT GAME_ID, ACTION_NUMBER 
-        FROM play_by_play 
-        WHERE ACTION_TYPE IN ('Made Shot', 'Missed Shot') 
-          AND LOC_X IS NOT NULL
-          AND SHOT_MADE_FLAG IS NOT NULL
-    """).df()
+    ids = con.execute().df()
     
     ids['X_POINTS'] = df['X_POINTS']
 
     print("Performing bulk update of X_POINTS...")
     con.register('temp_xp', ids)
-    con.execute("""
-        UPDATE play_by_play
-        SET X_POINTS = temp_xp.X_POINTS
-        FROM temp_xp
-        WHERE play_by_play.GAME_ID = temp_xp.GAME_ID
-          AND play_by_play.ACTION_NUMBER = temp_xp.ACTION_NUMBER
-    """)
+    con.execute()
     
     con.unregister('temp_xp')
     con.close()

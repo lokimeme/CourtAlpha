@@ -17,13 +17,11 @@ def generate_player_pdf(p_data):
     pdf.add_page()
     pdf.set_font("Arial", size=12)
     
-    # Title
     pdf.set_font("Arial", 'B', 16)
     pdf.cell(0, 10, f"Player Profile: {p_data['PLAYER_NAME']}", ln=True)
     pdf.set_font("Arial", size=12)
     pdf.ln(5)
     
-    # Summary Table
     pdf.cell(50, 10, "Team:", border=1)
     pdf.cell(100, 10, str(p_data['TEAM']), border=1, ln=True)
     pdf.cell(50, 10, "Strategic Outlook:", border=1)
@@ -32,7 +30,6 @@ def generate_player_pdf(p_data):
     pdf.cell(100, 10, str(p_data['ARCHETYPE_NAME']), border=1, ln=True)
     pdf.ln(10)
     
-    # Metrics
     pdf.set_font("Arial", 'B', 14)
     pdf.cell(0, 10, "Economic Valuation", ln=True)
     pdf.set_font("Arial", size=12)
@@ -46,7 +43,6 @@ def generate_player_pdf(p_data):
     pdf.cell(50, 10, f"${p_data['SURPLUS_VALUE']:,.0f}", ln=True)
     pdf.ln(10)
     
-    # DNA Section
     pdf.set_font("Arial", 'B', 14)
     pdf.cell(0, 10, "Skill DNA (Frequencies)", ln=True)
     pdf.set_font("Arial", size=12)

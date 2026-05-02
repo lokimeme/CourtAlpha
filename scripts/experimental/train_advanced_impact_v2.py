@@ -6,7 +6,6 @@ import joblib
 import os
 import logging
 
-# Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("AdvancedImpact")
 
@@ -17,22 +16,7 @@ def train_advanced_impact():
     con = duckdb.connect(DB_PATH)
     
     logger.info("Fetching possession-level surplus data...")
-    # We only want events where we have full lineup data
-    # Result = Actual Points - xPoints
-    query = """
-    SELECT 
-        GAME_ID,
-        CASE 
-            WHEN SHOT_ZONE IN ('Left Corner 3', 'Right Corner 3', 'Above the Break 3') THEN SHOT_MADE_FLAG * 3
-            ELSE SHOT_MADE_FLAG * 2
-        END - X_POINTS as SURPLUS,
-        OFF_1, OFF_2, OFF_3, OFF_4, OFF_5,
-        DEF_1, DEF_2, DEF_3, DEF_4, DEF_5
-    FROM play_by_play
-    WHERE OFF_1 IS NOT NULL
-      AND X_POINTS IS NOT NULL
-      AND GARBAGE_TIME = FALSE
-    """
+    query = 
     df = con.execute(query).df()
     
     if df.empty:
@@ -42,9 +26,6 @@ def train_advanced_impact():
 
     logger.info(f"Training on {len(df)} shot events...")
 
-    # Build Sparse Matrix
-    # Players are features. 
-    # Offensive players get +1, Defensive players get -1.
     all_players_raw = pd.unique(df[[f"OFF_{i}" for i in range(1, 6)] + [f"DEF_{i}" for i in range(1, 6)]].values.ravel('K'))
     all_players = [p for p in all_players_raw if p is not None and isinstance(p, str)]
     player_to_idx = {player: i for i, player in enumerate(all_players)}
@@ -58,11 +39,9 @@ def train_advanced_impact():
     cols = []
     data = []
     
-    # Pre-calculate player counts for a sample size filter
     player_counts = {p: 0 for p in all_players}
     
     for i, row in enumerate(df.itertuples()):
-        # Offense
         for j in range(1, 6): 
             p = getattr(row, f"OFF_{j}")
             if p in player_to_idx:
@@ -70,7 +49,6 @@ def train_advanced_impact():
                 cols.append(player_to_idx[p])
                 data.append(1)
                 player_counts[p] += 1
-        # Defense
         for j in range(1, 6):
             p = getattr(row, f"DEF_{j}")
             if p in player_to_idx:
@@ -83,39 +61,28 @@ def train_advanced_impact():
     y = df['SURPLUS'].values
 
     logger.info("Fitting Ridge Regression (Regularized Adjusted Plus-Minus)...")
-    # alpha is the regularization strength. 
-    # We use a cross-validation approach or a heuristic based on sample size
-    model = Ridge(alpha=2000) # Increased regularization for more conservative estimates
+    model = Ridge(alpha=2000)
     model.fit(X, y)
 
-    # Extract Results
     impact_df = pd.DataFrame({
         'PLAYER_NAME': all_players,
         'ADJUSTED_SURPLUS_IMPACT': model.coef_,
         'EVENT_COUNT': [player_counts[p] for p in all_players]
     })
 
-    # Filter out low-sample noise (e.g., players with < 50 events)
     impact_df.loc[impact_df['EVENT_COUNT'] < 50, 'ADJUSTED_SURPLUS_IMPACT'] = 0.0
 
-    # Update player_metrics
     logger.info("Updating player_metrics with Adjusted Impact...")
     try:
         con.execute("ALTER TABLE player_metrics ADD COLUMN ADJUSTED_IMPACT FLOAT")
     except: pass
 
     con.register('temp_impact', impact_df)
-    con.execute("""
-        UPDATE player_metrics
-        SET ADJUSTED_IMPACT = temp_impact.ADJUSTED_SURPLUS_IMPACT
-        FROM temp_impact
-        WHERE player_metrics.PLAYER_NAME = temp_impact.PLAYER_NAME
-    """)
+    con.execute()
     
     con.unregister('temp_impact')
     con.close()
     
-    # Save model for later use
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
     joblib.dump((model, all_players), MODEL_PATH)
     logger.info("Advanced Impact model training complete.")

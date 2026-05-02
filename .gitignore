@@ -1,4 +1,4 @@
-data/*.duckdb
+
 logs/
 venv/
 __pycache__/

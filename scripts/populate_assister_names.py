@@ -14,7 +14,6 @@ def extract_assister_name(description):
     if not description:
         return None
     
-    # Format: "... (Player 1 AST)"
     match = re.search(r'\(([^)]+)\s\d+\sAST\)', description)
     if match:
         return normalize_name(match.group(1))
@@ -24,12 +23,7 @@ def populate_assister_names():
     con = duckdb.connect(DB_PATH)
     
     print("Fetching assist descriptions...")
-    df = con.execute("""
-        SELECT GAME_ID, ACTION_NUMBER, DESCRIPTION 
-        FROM play_by_play 
-        WHERE DESCRIPTION LIKE '%AST)'
-          AND ASSISTER_NAME IS NULL
-    """).df()
+    df = con.execute().df()
     
     if df.empty:
         print("No new assists found to process.")
@@ -40,13 +34,7 @@ def populate_assister_names():
     
     print("Updating database...")
     con.register('temp_assists', df[['GAME_ID', 'ACTION_NUMBER', 'EXTRACTED_ASSISTER']])
-    con.execute("""
-        UPDATE play_by_play
-        SET ASSISTER_NAME = temp_assists.EXTRACTED_ASSISTER
-        FROM temp_assists
-        WHERE play_by_play.GAME_ID = temp_assists.GAME_ID
-          AND play_by_play.ACTION_NUMBER = temp_assists.ACTION_NUMBER
-    """)
+    con.execute()
     
     con.unregister('temp_assists')
     con.close()
