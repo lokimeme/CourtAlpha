@@ -38,11 +38,6 @@ def load_data():
     
     if not os.path.exists(db_path):
         st.error(f"DB not found at: {db_path}")
-        st.write("Listing root contents:", os.listdir(base_dir))
-        if os.path.exists(data_dir):
-            st.write("Listing data/ contents:", os.listdir(data_dir))
-        else:
-            st.warning("data/ directory is MISSING in deployment!")
         return pd.DataFrame()
         
     con = duckdb.connect(db_path, read_only=True)
@@ -50,28 +45,44 @@ def load_data():
     # 1. Base Metrics
     df = con.execute("SELECT * FROM player_metrics").df()
     
-    # 2. Robust Team Mapping
-    # Try player_teams (from nba_api) first, then deduplicated contracts
+    # 2. Robust Team & Position Mapping
     try:
-        # Create a unified team mapping from all available sources
         mapping_query = """
-            SELECT PLAYER_NAME, TEAM FROM (
-                SELECT PLAYER_NAME, TEAM, 1 as priority FROM player_teams
+            SELECT PLAYER_NAME, TEAM, POSITION FROM (
+                SELECT PLAYER_NAME, TEAM, 'N/A' as POSITION, 1 as priority FROM player_teams
                 UNION ALL
-                SELECT PLAYER_NAME, TEAM, 2 as priority FROM contracts
+                SELECT PLAYER_NAME, TEAM, POSITION, 2 as priority FROM contracts
             ) 
-            QUALIFY ROW_NUMBER() OVER(PARTITION BY PLAYER_NAME ORDER BY priority ASC) = 1
+            QUALIFY ROW_NUMBER() OVER(PARTITION BY PLAYER_NAME ORDER BY priority DESC) = 1
         """
-        teams = con.execute(mapping_query).df()
-        df = df.merge(teams, on='PLAYER_NAME', how='left')
+        meta = con.execute(mapping_query).df()
+        df = df.merge(meta, on='PLAYER_NAME', how='left')
     except Exception as e:
-        # Fallback if tables don't exist yet
         df['TEAM'] = "Unknown"
+        df['POSITION'] = "N/A"
         
     df['TEAM'] = df['TEAM'].fillna("Unknown")
+    df['POSITION'] = df['POSITION'].fillna("N/A")
     
     con.close()
     return df
+
+@st.cache_data
+def load_shot_data(player_name):
+    base_dir = os.path.dirname(__file__)
+    db_path = os.path.join(base_dir, 'data/courtalpha.duckdb')
+    con = duckdb.connect(db_path, read_only=True)
+    
+    query = """
+        SELECT LOC_X, LOC_Y, SHOT_MADE_FLAG 
+        FROM play_by_play 
+        WHERE PLAYER_NAME = ? 
+          AND LOC_X IS NOT NULL 
+          AND ACTION_TYPE IN ('Made Shot', 'Missed Shot')
+    """
+    shots = con.execute(query, [player_name]).df()
+    con.close()
+    return shots
 
 st.sidebar.title("🏀 CourtAlpha v2.5")
 st.sidebar.markdown("*Executive Intelligence Suite*")
@@ -84,43 +95,45 @@ def optimize_lineup(star_name, players_df):
     star = players_df[players_df['PLAYER_NAME'] == star_name].iloc[0]
     others = players_df[players_df['PLAYER_NAME'] != star_name]
     
-    lineup = [star]
+    # 1. Initialize Lineup with Star in their slot
+    # Map raw positions to standard 5
+    pos_map = {'PG': 0, 'SG': 1, 'SF': 2, 'PF': 3, 'C': 4}
+    standard_pos = ['PG', 'SG', 'SF', 'PF', 'C']
     
-    # Define role requirements
+    lineup = [None] * 5
+    star_pos_idx = pos_map.get(star['POSITION'], 2) # SF default if unknown
+    lineup[star_pos_idx] = star
+    
+    # 2. Strategic Fit Analysis
+    # We want complementary archetypes for the remaining slots
     roles = {
-        "Initiator": ["Floor General", "High-Usage Slasher", "Versatile Forward"],
-        "Interior": ["Elite Rim Protector", "Connector / High-IQ Big"],
-        "Spacing": ["3&D Wing", "Movement Shooter"],
-        "POA": ["Point-of-Attack Defender", "3&D Wing"]
+        "PG": ["Floor General", "High-Usage Slasher"],
+        "SG": ["Movement Shooter", "3&D Wing"],
+        "SF": ["3&D Wing", "Versatile Forward"],
+        "PF": ["Versatile Forward", "Connector / High-IQ Big"],
+        "C": ["Elite Rim Protector", "Connector / High-IQ Big"]
     }
     
-    # Identify which roles the star fills
-    star_arch = star['ARCHETYPE_NAME']
-    filled_roles = []
-    for role, archs in roles.items():
-        if star_arch in archs:
-            filled_roles.append(role)
-            break # Assign only one primary role to star
-            
-    # Need to fill remaining roles
-    required_roles = [r for r in roles.keys() if r not in filled_roles]
-    
-    # For a 5-man lineup, if star fills 1 role, we need 4 more. 
-    # If star fills 0 (unlikely with our archetypes), we need 5.
-    # To keep it simple, we'll fill the remaining predefined slots + generic impact
-    
-    for role in required_roles:
-        possible = others[others['ARCHETYPE_NAME'].isin(roles[role])]
-        if not possible.empty:
+    # 3. Fill remaining slots with highest Meta-Impact for that position
+    for i in range(5):
+        if lineup[i] is not None: continue
+        
+        target_pos = standard_pos[i]
+        possible = others[others['POSITION'] == target_pos]
+        
+        # Prefer specific archetypes for that position
+        preferred = possible[possible['ARCHETYPE_NAME'].isin(roles[target_pos])]
+        
+        if not preferred.empty:
+            best_fit = preferred.sort_values(by='META_IMPACT', ascending=False).iloc[0]
+        elif not possible.empty:
             best_fit = possible.sort_values(by='META_IMPACT', ascending=False).iloc[0]
-            lineup.append(best_fit)
-            others = others[others['PLAYER_NAME'] != best_fit['PLAYER_NAME']]
+        else:
+            # Emergency fallback: highest impact remaining player
+            best_fit = others.sort_values(by='META_IMPACT', ascending=False).iloc[0]
             
-    # Fill remaining spots to reach 5 players with highest remaining meta-impact
-    while len(lineup) < 5 and not others.empty:
-        best_impact = others.sort_values(by='META_IMPACT', ascending=False).iloc[0]
-        lineup.append(best_impact)
-        others = others[others['PLAYER_NAME'] != best_impact['PLAYER_NAME']]
+        lineup[i] = best_fit
+        others = others[others['PLAYER_NAME'] != best_fit['PLAYER_NAME']]
         
     return pd.DataFrame(lineup)
 
@@ -170,7 +183,7 @@ else:
         
         with col1:
             st.subheader(f"Profile: {player_name}")
-            st.write(f"**Team:** {p['TEAM']} | **Age:** {p['AGE']} | **Archetype:** {p['ARCHETYPE_NAME']}")
+            st.write(f"**Team:** {p['TEAM']} | **Position:** {p['POSITION']} | **Age:** {p['AGE']}")
             
             color = "#00ffcc" if "Pillar" in p['STRATEGIC_OUTLOOK'] else "#ffcc00" if "Engine" in p['STRATEGIC_OUTLOOK'] else "#ffffff"
             st.markdown(f"### Outlook: <span style='color:{color}'>{p['STRATEGIC_OUTLOOK']}</span>", unsafe_allow_html=True)
@@ -194,53 +207,72 @@ else:
                 st.warning(f"PDF generation failed: {e}")
             
         with col2:
-            st.subheader("Metric Decomposition")
+            tab1, tab2, tab3 = st.tabs(["Metric Decomposition", "Skill DNA", "Shot Heat Map"])
             
-            bench_data = pd.DataFrame({
-                'Metric': ['Internal RAPM', 'LEBRON', 'EPM', 'DARKO'],
-                'Value': [p['SHRUNK_IMPACT']*100, p['EXTERNAL_LEBRON'], p['EXTERNAL_EPM'], p['EXTERNAL_DARKO']]
-            })
+            with tab1:
+                st.subheader("Metric Decomposition")
+                bench_data = pd.DataFrame({
+                    'Metric': ['Internal RAPM', 'LEBRON', 'EPM', 'DARKO'],
+                    'Value': [p['SHRUNK_IMPACT']*100, p['EXTERNAL_LEBRON'], p['EXTERNAL_EPM'], p['EXTERNAL_DARKO']]
+                })
+                chart = alt.Chart(bench_data).mark_bar().encode(
+                    x=alt.X('Value:Q'),
+                    y=alt.Y('Metric:N', sort='-x'),
+                    color=alt.condition(alt.datum.Value > 0, alt.value("#00ffcc"), alt.value("#ff4b4b"))
+                ).properties(height=350)
+                st.altair_chart(chart, use_container_width=True)
             
-            chart = alt.Chart(bench_data).mark_bar().encode(
-                x=alt.X('Value:Q'),
-                y=alt.Y('Metric:N', sort='-x'),
-                color=alt.condition(
-                    alt.datum.Value > 0,
-                    alt.value("#00ffcc"),  # Green for positive
-                    alt.value("#ff4b4b")   # Red for negative
-                )
-            ).properties(height=300)
-            st.altair_chart(chart, use_container_width=True)
-            
-            st.subheader("Skill DNA (Playstyle Frequencies)")
-            dna_data = pd.DataFrame({
-                'Action': ['Logo', 'Floater', 'Post', 'Spot-up', 'Isolation', 'Rim Prot'],
-                'Freq': [p['LOGO_FREQ'], p['FLOATER_FREQ'], p['POST_FREQ'], p['SPOTUP_FREQ'], p['ISOLATION_FREQ'], p['RIM_PROT_FREQ']]
-            })
-            
-            dna_chart = alt.Chart(dna_data).mark_bar(color="#ffcc00").encode(
-                x=alt.X('Freq:Q', axis=alt.Axis(format='%')),
-                y=alt.Y('Action:N', sort='-x')
-            ).properties(height=300)
-            st.altair_chart(dna_chart, use_container_width=True)
+            with tab2:
+                st.subheader("Skill DNA (Playstyle Frequencies)")
+                dna_data = pd.DataFrame({
+                    'Action': ['Logo', 'Floater', 'Post', 'Spot-up', 'Isolation', 'Rim Prot'],
+                    'Freq': [p['LOGO_FREQ'], p['FLOATER_FREQ'], p['POST_FREQ'], p['SPOTUP_FREQ'], p['ISOLATION_FREQ'], p['RIM_PROT_FREQ']]
+                })
+                dna_chart = alt.Chart(dna_data).mark_bar(color="#ffcc00").encode(
+                    x=alt.X('Freq:Q', axis=alt.Axis(format='%')),
+                    y=alt.Y('Action:N', sort='-x')
+                ).properties(height=350)
+                st.altair_chart(dna_chart, use_container_width=True)
+
+            with tab3:
+                st.subheader("Shot Location Heat Map")
+                shot_df = load_shot_data(player_name)
+                if not shot_df.empty:
+                    heatmap = alt.Chart(shot_df).mark_rect().encode(
+                        x=alt.X('LOC_X:Q', bin=alt.Bin(maxbins=30), title="Court Width"),
+                        y=alt.Y('LOC_Y:Q', bin=alt.Bin(maxbins=30), title="Court Length"),
+                        color=alt.Color('count():Q', scale=alt.Scale(scheme='inferno'), title="Shot Density")
+                    ).properties(height=400)
+                    st.altair_chart(heatmap, use_container_width=True)
+                else:
+                    st.info("No spatial shot data available for this player.")
 
     # --- LINEUP OPTIMIZER ---
     elif nav == "Lineup Optimizer":
         st.title("Strategic Lineup Optimizer")
-        st.info("Select a star player and the system will recommend a balanced 5-man unit based on complementary archetypes and Meta-Impact.")
+        st.info("Select a team and one of their top 3 impact players to build a complementary 5-man unit.")
         
-        star_player = st.selectbox("Select Star Player (The Anchor)", sorted(df['PLAYER_NAME'].unique()), index=0)
+        # 1. Select Team
+        team_list = sorted(df[df['TEAM'] != 'Unknown']['TEAM'].unique())
+        selected_team = st.selectbox("Select Team", team_list)
+        
+        # 2. Select from Top 3 Stars
+        team_stars = df[df['TEAM'] == selected_team].sort_values(by='META_IMPACT', ascending=False).head(3)
+        star_player = st.selectbox("Select Star Player (The Anchor)", team_stars['PLAYER_NAME'].unique())
         
         if star_player:
             rec_lineup = optimize_lineup(star_player, df)
             
-            st.subheader(f"Recommended Lineup for {star_player}")
+            st.subheader(f"Balanced Lineup built around {star_player}")
+            
+            # Position labels for display
+            pos_labels = ['PG', 'SG', 'SF', 'PF', 'C']
             
             cols = st.columns(5)
             for i, (_, p) in enumerate(rec_lineup.iterrows()):
                 with cols[i]:
-                    color = "#00ffcc" if i == 0 else "#ffffff"
-                    st.markdown(f"**{'🌟 ' if i == 0 else ''}{p['PLAYER_NAME']}**")
+                    st.markdown(f"**{pos_labels[i]}**")
+                    st.markdown(f"**{'🌟 ' if p['PLAYER_NAME'] == star_player else ''}{p['PLAYER_NAME']}**")
                     st.write(f"*{p['ARCHETYPE_NAME']}*")
                     st.metric("Impact", f"{p['META_IMPACT']:.2f}")
                     
@@ -259,7 +291,7 @@ else:
                 total_cost = rec_lineup['CONTRACT_COST'].sum()
                 st.metric("Total Unit Salary", format_currency(total_cost))
             
-            st.dataframe(rec_lineup[['PLAYER_NAME', 'ARCHETYPE_NAME', 'META_IMPACT', 'MARKET_VALUE', 'STRATEGIC_OUTLOOK']], use_container_width=True)
+            st.dataframe(rec_lineup[['PLAYER_NAME', 'POSITION', 'ARCHETYPE_NAME', 'META_IMPACT', 'MARKET_VALUE', 'STRATEGIC_OUTLOOK']], use_container_width=True)
 
     elif nav == "Trade Simulator":
         st.title("CBA Trade Simulator")
