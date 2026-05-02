@@ -38,17 +38,8 @@ def load_data():
     
     if not db_path.exists():
         st.error(f"DB not found at: {db_path.absolute()}")
-        st.write("Root files:", [f.name for f in base_dir.iterdir()])
-        data_dir = base_dir / "data"
-        if data_dir.exists():
-            st.write("Data folder files:", [f.name for f in data_dir.iterdir()])
         return pd.DataFrame()
-    
-    size_mb = db_path.stat().st_size / (1024 * 1024)
-    if size_mb < 1:
-        st.error(f"⚠️ DATABASE ERROR: Found a 1KB pointer file ({size_mb:.2f}MB). GitHub LFS did not sync the real data to Streamlit.")
-        return pd.DataFrame()
-
+        
     con = duckdb.connect(str(db_path), read_only=True)
     
     # 1. Base Metrics
@@ -72,6 +63,7 @@ def load_data():
         
     df['TEAM'] = df['TEAM'].fillna("Unknown")
     df['POSITION'] = df['POSITION'].fillna("N/A")
+    df['PPG'] = df['PPG'].fillna(0.0)
     
     con.close()
     return df
@@ -265,8 +257,8 @@ else:
         team_list = sorted(df[df['TEAM'] != 'Unknown']['TEAM'].unique())
         selected_team = st.selectbox("Select Team", team_list)
         
-        # 2. Select from Top 3 Stars
-        team_stars = df[df['TEAM'] == selected_team].sort_values(by='META_IMPACT', ascending=False).head(3)
+        # 2. Select from Top 3 Stars (By PPG)
+        team_stars = df[df['TEAM'] == selected_team].sort_values(by='PPG', ascending=False).head(3)
         star_player = st.selectbox("Select Star Player (The Anchor)", team_stars['PLAYER_NAME'].unique())
         
         if star_player:
