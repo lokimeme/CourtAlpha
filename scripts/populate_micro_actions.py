@@ -13,7 +13,6 @@ def populate_micro_actions():
     
     logger.info("Starting Master Micro-Action Tagging (v3.0 - Robust Multi-Factor)...")
 
-    # 1. INITIAL BROAD CATEGORIZATION (creation context)
     logger.info("Step 1: Identifying Creation Context...")
     con.execute("""
         UPDATE play_by_play
@@ -30,14 +29,10 @@ def populate_micro_actions():
         WHERE ACTION_TYPE IN ('Made Shot', 'Missed Shot')
     """)
 
-    # 2. ENRICH WITH SKILL-SPECIFIC DATA (without overwriting context)
-    # We use || to append if it's high-value, or just update generic actions
     logger.info("Step 2: Enriching with Skill-Specific details (Floaters, Post-ups, Logo)...")
     
-    # Identify Logo Range
     con.execute("UPDATE play_by_play SET MICRO_ACTION = 'Logo Range' WHERE SHOT_DISTANCE >= 28 AND ACTION_TYPE IN ('Made Shot', 'Missed Shot')")
     
-    # Identify Floaters
     con.execute("""
         UPDATE play_by_play 
         SET MICRO_ACTION = 'Floater / Touch' 
@@ -45,7 +40,6 @@ def populate_micro_actions():
           AND MICRO_ACTION NOT IN ('Assisted 3PT', 'Assisted Bucket', 'Lob Finish')
     """)
 
-    # Identify Post-Ups
     con.execute("""
         UPDATE play_by_play 
         SET MICRO_ACTION = 'Post-Up / Hook' 
@@ -53,11 +47,8 @@ def populate_micro_actions():
           AND MICRO_ACTION NOT IN ('Assisted 3PT', 'Assisted Bucket', 'Self-Created (Space)')
     """)
 
-    # 3. OVERLAY DEFENSIVE CONTEXT (Physical Contests & Interior Wall)
     logger.info("Step 3: Overlaying Defensive Context...")
     
-    # 3a. Foul Contests (Foul within 1 second of miss)
-    # We already have some tagged, but let's re-run carefully with Game ID join
     con.execute("""
         UPDATE play_by_play
         SET MICRO_ACTION = 'Physical Contest (Foul)'
@@ -74,7 +65,6 @@ def populate_micro_actions():
         )
     """)
 
-    # 3b. And-1 Detection (FIXED: Game-specific join)
     logger.info("Tagging And-1 Opportunities (Fixed Logic)...")
     con.execute("""
         UPDATE play_by_play
@@ -89,7 +79,6 @@ def populate_micro_actions():
           )
     """)
 
-    # 3c. Interior Wall (Tallest defender on rim miss)
     logger.info("Applying Interior Wall logic...")
     def height_to_inches(h):
         if not h or '-' not in str(h): return 0

@@ -43,7 +43,6 @@ def generate_talent_profiles():
     creation_df = con.execute(creation_query).df()
 
     print("Calculating Defensive Value (Suppressed xPoints)...")
-    # Defensive value for now is xP of shots where player got the defensive rebound
     defense_query = """
         SELECT 
             DEFENDER_NAME as PLAYER_NAME,
@@ -56,23 +55,17 @@ def generate_talent_profiles():
     """
     defense_df = con.execute(defense_query).df()
 
-    # Merge DataFrames
     df = pd.merge(scoring_df, creation_df, on='PLAYER_NAME', how='outer')
     df = pd.merge(df, defense_df, on='PLAYER_NAME', how='outer').fillna(0)
 
     print(f"Calculating holistic metrics for {len(df)} players...")
     
-    # 1. Scoring Surplus (Points above Expected)
     df['SCORING_SURPLUS'] = df['TOTAL_POINTS'] - df['TOTAL_X_POINTS']
     
-    # 2. Total Offensive Impact = Scoring Surplus + Creation Value
     df['TOTAL_OFFENSIVE_IMPACT'] = df['SCORING_SURPLUS'] + df['CREATION_VALUE']
     
-    # 3. Total Two-Way Impact = Total Offensive Impact + Defensive Value
     df['TOTAL_IMPACT'] = df['TOTAL_OFFENSIVE_IMPACT'] + df['DEFENSIVE_VALUE']
     
-    # 4. Bayesian Shrinkage for Total Impact
-    # Use total "Action Count" (FGA + AST + STOPS) for sample size
     df['SAMPLE_SIZE'] = df['FGA'] + df['ASSISTS'] + df['DEFENSIVE_STOPS']
     df['SHRUNK_TOTAL_IMPACT'] = df.apply(
         lambda row: shrink_value(row['TOTAL_IMPACT'], row['SAMPLE_SIZE'], prior=0.0, lmbda=300), 

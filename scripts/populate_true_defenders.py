@@ -3,7 +3,6 @@ import pandas as pd
 import logging
 import sys
 
-# Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("TrueDefenders")
 
@@ -14,8 +13,6 @@ def populate_foul_contests():
 
     logger.info("Searching for missed shots followed by fouls (Windowed)...")
 
-    # Improved query: Find the smallest ACTION_NUMBER > current that is a Foul
-    # within the same period and game.
     query = """
         SELECT 
             p1.GAME_ID, 
@@ -30,7 +27,6 @@ def populate_foul_contests():
           AND p2.ACTION_TYPE = 'Foul'
           AND p2.SUB_TYPE IN ('Personal', 'Shooting', 'Loose Ball')
     """
-    # We take the first foul found after the shot
     df = con.execute(query).df()
 
     if df.empty:
@@ -38,12 +34,10 @@ def populate_foul_contests():
         con.close()
         return
 
-    # Keep only the closest foul for each shot
     df = df.sort_values(['GAME_ID', 'ACTION_NUMBER']).groupby(['GAME_ID', 'ACTION_NUMBER']).first().reset_index()
 
     def extract_fouler(desc):
         import re
-        # Support various foul formats
         match = re.search(r'^(.*?)\s[PSL]\.FOUL', desc)
         if not match:
             match = re.search(r'^(.*?)\sOffensive', desc)
@@ -69,7 +63,6 @@ def populate_foul_contests():
     con.unregister('temp_foul_defenders')
     con.close()
     logger.info("Foul-Link population complete.")
-
 
 if __name__ == "__main__":
     populate_foul_contests()

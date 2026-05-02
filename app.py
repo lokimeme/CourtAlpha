@@ -7,24 +7,22 @@ from scripts.cba_engine import CBAEngine
 from scripts.utils import format_currency
 from scripts.narrative_generator import generate_player_pdf
 
-# --- PAGE CONFIG ---
 st.set_page_config(page_title="CourtAlpha | Front Office Dashboard", layout="wide", page_icon="🏀")
 
-# --- CUSTOM CSS ---
 st.markdown("""
     <style>
     .main {
-        background-color: #0e1117;
+        background-color:
     }
     .stMetric {
-        background-color: #1e2130;
+        background-color:
         padding: 15px;
         border-radius: 10px;
-        border: 1px solid #3e4253;
+        border: 1px solid
     }
-    .status-pillar { color: #00ffcc; font-weight: bold; }
-    .status-engine { color: #ffcc00; font-weight: bold; }
-    .status-risk { color: #ff4b4b; font-weight: bold; }
+    .status-pillar { color:
+    .status-engine { color:
+    .status-risk { color:
     </style>
 """, unsafe_allow_stdio=True)
 
@@ -33,10 +31,7 @@ DB_PATH = 'data/courtalpha.duckdb'
 @st.cache_data
 def load_data():
     con = duckdb.connect(DB_PATH, read_only=True)
-    # Load player metrics
     df = con.execute("SELECT * FROM player_metrics").df()
-    # Load metadata for teams (assuming it's in contracts or player_metadata)
-    # Let's try to get TEAM from contracts
     try:
         teams = con.execute("SELECT PLAYER_NAME, TEAM FROM contracts").df()
         df = df.merge(teams, on='PLAYER_NAME', how='left')
@@ -46,7 +41,6 @@ def load_data():
     con.close()
     return df
 
-# --- SIDEBAR NAVIGATION ---
 st.sidebar.title("🏀 CourtAlpha v2.5")
 st.sidebar.markdown("*Executive Intelligence Suite*")
 st.sidebar.markdown("---")
@@ -57,7 +51,6 @@ df = load_data()
 if df.empty:
     st.error("No data found in database. Please run the ingestion and ML pipelines.")
 else:
-    # --- EXECUTIVE SUMMARY ---
     if nav == "Executive Summary":
         st.title("Executive Front Office Dashboard")
         
@@ -91,7 +84,6 @@ else:
             bottom_surplus = df.sort_values(by='SURPLUS_VALUE', ascending=True).head(10)
             st.dataframe(bottom_surplus[['PLAYER_NAME', 'SURPLUS_VALUE', 'STRATEGIC_OUTLOOK']], use_container_width=True)
 
-    # --- PLAYER INTELLIGENCE ---
     elif nav == "Player Intelligence":
         st.title("Player Intelligence Report")
         
@@ -104,7 +96,6 @@ else:
             st.subheader(f"Profile: {player_name}")
             st.write(f"**Team:** {p['TEAM']} | **Age:** {p['AGE']} | **Archetype:** {p['ARCHETYPE_NAME']}")
             
-            # Strategic Outlook Badge
             color = "#00ffcc" if "Pillar" in p['STRATEGIC_OUTLOOK'] else "#ffcc00" if "Engine" in p['STRATEGIC_OUTLOOK'] else "#ffffff"
             st.markdown(f"### Outlook: <span style='color:{color}'>{p['STRATEGIC_OUTLOOK']}</span>", unsafe_allow_stdio=True)
             
@@ -114,7 +105,6 @@ else:
             st.metric("Contract Cost", format_currency(p['CONTRACT_COST']))
             st.metric("Surplus Value", format_currency(p['SURPLUS_VALUE']), delta=format_currency(p['SURPLUS_VALUE']))
             
-            # PDF Export
             st.markdown("---")
             try:
                 pdf_bytes = generate_player_pdf(p.to_dict())
@@ -130,7 +120,6 @@ else:
         with col2:
             st.subheader("Metric Decomposition")
             
-            # External Benchmarks vs Internal
             bench_data = pd.DataFrame({
                 'Metric': ['Internal RAPM', 'LEBRON', 'EPM', 'DARKO'],
                 'Value': [p['SHRUNK_IMPACT']*100, p['EXTERNAL_LEBRON'], p['EXTERNAL_EPM'], p['EXTERNAL_DARKO']]
@@ -147,7 +136,6 @@ else:
             ).properties(height=300)
             st.altair_chart(chart, use_container_width=True)
             
-            # Skill DNA (Frequencies)
             st.subheader("Skill DNA (Playstyle Frequencies)")
             dna_data = pd.DataFrame({
                 'Action': ['Logo', 'Floater', 'Post', 'Spot-up', 'Isolation', 'Rim Prot'],
@@ -160,7 +148,6 @@ else:
             ).properties(height=300)
             st.altair_chart(dna_chart, use_container_width=True)
 
-    # --- TRADE SIMULATOR ---
     elif nav == "Trade Simulator":
         st.title("CBA Trade Simulator")
         cba = CBAEngine()
@@ -187,7 +174,6 @@ else:
 
         st.markdown("---")
         
-        # CBA Legality Check (Placeholder for Team Salary)
         team_salary = st.number_input("Your Team's Total Salary (Current)", value=170000000, step=1000000)
         
         legality = cba.check_trade_legality(out_df['CONTRACT_COST'].tolist(), in_df['CONTRACT_COST'].tolist(), team_salary)
@@ -199,7 +185,6 @@ else:
             for note in legality['notes']:
                 st.write(f"- {note}")
                 
-        # Impact Analysis
         st.subheader("Net Impact Change")
         net_impact = (avg_impact_in * len(in_df)) - (avg_impact_out * len(out_df))
         st.metric("Net Meta-Impact Change", f"{net_impact:+.2f} Pts/100")
@@ -207,13 +192,11 @@ else:
         net_salary = total_in - total_out
         st.metric("Net Salary Change", format_currency(net_salary), delta=format_currency(net_salary), delta_color="inverse")
 
-    # --- ECONOMIC LAYER ---
     elif nav == "Economic Layer":
         st.title("Economic Layer & Market Projections")
         
         st.write("Full league analysis of surplus value and strategic outlook.")
         
-        # Table with filters
         f_outlook = st.multiselect("Filter by Outlook", df['STRATEGIC_OUTLOOK'].unique(), default=df['STRATEGIC_OUTLOOK'].unique())
         f_arch = st.multiselect("Filter by Archetype", df['ARCHETYPE_NAME'].unique(), default=df['ARCHETYPE_NAME'].unique())
         

@@ -9,7 +9,6 @@ class DataValidator:
     """
     def __init__(self, db_path='data/courtalpha.duckdb'):
         self.db_path = db_path
-        # Use read_only=True to allow parallel audits while backfill/lineup scripts are running
         self.con = duckdb.connect(self.db_path, read_only=True)
 
     def validate_schema(self):
@@ -75,7 +74,6 @@ class DataValidator:
         score -= (len(schema_errs) * 15)
         score -= (len(outliers) * 2)
         
-        # Check for nulls in critical columns
         nulls = self.con.execute("SELECT count(*) FROM player_metrics WHERE SHRUNK_IMPACT IS NULL").fetchone()[0]
         score -= (nulls * 0.5)
         

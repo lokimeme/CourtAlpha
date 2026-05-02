@@ -13,7 +13,6 @@ def normalize_name(name):
 def extract_player_name(description):
     if not description or 'REBOUND' not in description:
         return None
-    # "Horford REBOUND (Off:0 Def:1)" -> "Horford"
     match = re.search(r'^(.*?)\sREBOUND', description)
     if match:
         return normalize_name(match.group(1))
@@ -23,7 +22,6 @@ def populate_defender_names():
     con = duckdb.connect(DB_PATH)
     
     print("Fetching missed shots and following rebounds...")
-    # Using a self-join to find the event immediately after a missed shot
     query = """
         SELECT 
             p1.GAME_ID, 

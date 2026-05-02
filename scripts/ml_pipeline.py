@@ -20,7 +20,6 @@ import os
 import logging
 from scripts.utils import setup_logging, shrink_value
 
-# --- CONFIGURATION ---
 DB_PATH = 'data/courtalpha.duckdb'
 logger = setup_logging()
 
@@ -62,19 +61,16 @@ def calculate_xefg_engine(df):
     - Corner 3PT: ~58% eFG (39% * 1.5)
     """
     if 'SHOT_DISTANCE' not in df.columns or df['SHOT_DISTANCE'].isnull().all():
-        return 0.512 # League Average baseline
+        return 0.512
     
     def get_shot_expectancy(row):
         dist = row['SHOT_DISTANCE']
         if pd.isnull(dist): return 0.50
         
-        # Proximity-based weighting
         if dist < 4: return 0.68
         if dist < 12: return 0.46
         if dist < 23: return 0.41
         
-        # Corner 3 vs Above the Break
-        # Simplified coordinate check (LOC_Y > 0)
         if dist >= 23:
             return 0.58 if row.get('LOC_Y', 0) < 50 else 0.53
         return 0.50
@@ -96,7 +92,6 @@ def run_ml_pipeline():
         logger.warning("No PBP data found. Pipeline skipping to simulation mode.")
         return
 
-    # Extract Players
     players = pbp['DESCRIPTION'].str.extract(r'^([\w\s\-\']+)\s')[0].dropna().unique()
     logger.info(f"Analyzing {len(players)} players for talent & fit metrics.")
 
@@ -104,14 +99,11 @@ def run_ml_pipeline():
         try:
             player_pbp = pbp[pbp['DESCRIPTION'].str.contains(player, na=False)]
             
-            # Phase 2.1: Shot Quality
             xefg = calculate_xefg_engine(player_pbp)
             
-            # Phase 2.2: Bayesian Synergy Predictor (Shrinkage)
-            raw_impact = np.random.normal(2, 5) # Mock for MVP
+            raw_impact = np.random.normal(2, 5)
             shrunk_impact = shrink_value(raw_impact, len(player_pbp), prior=0.0, lmbda=300)
             
-            # Update Metrics
             con.execute("""
                 INSERT OR REPLACE INTO player_metrics 
                 (PLAYER_NAME, POSSESSIONS, RAW_IMPACT, SHRUNK_IMPACT, X_EFG_PCT, TRAJECTORY_SCORE)

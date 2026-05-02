@@ -25,7 +25,7 @@ def fetch_shot_data_with_retry(game_id, retries=3, delay=5):
                 if not shot_data.empty:
                     print(f"  Successfully found data for {game_id} as {season_type}", flush=True)
                     return shot_data
-                break # If successful but empty, don't retry this season type, try the next one
+                break
             except Exception as e:
                 if "429" in str(e):
                     print(f"Rate limited on {game_id}. Sleeping 30s...", flush=True)
@@ -39,7 +39,6 @@ def fetch_shot_data_with_retry(game_id, retries=3, delay=5):
 def cleanup(limit=None):
     con = duckdb.connect(DB_PATH)
     
-    # Identify games that have shots but no location data
     query = """
         SELECT DISTINCT GAME_ID 
         FROM play_by_play 
@@ -64,13 +63,10 @@ def cleanup(limit=None):
         
         if not shots.empty:
             try:
-                # Prepare temporary view for the shots
                 shots_df = shots[['GAME_EVENT_ID', 'LOC_X', 'LOC_Y', 'SHOT_DISTANCE', 'SHOT_MADE_FLAG']].copy()
                 shots_df['GAME_EVENT_ID'] = shots_df['GAME_EVENT_ID'].astype(int)
                 con.register('temp_shots', shots_df)
                 
-                # Update the main table
-                # DuckDB supports UPDATE FROM syntax
                 con.execute(f"""
                     UPDATE play_by_play
                     SET 
@@ -89,13 +85,11 @@ def cleanup(limit=None):
         else:
             print(f"Skipping {game_id} - no shot data retrieved.", flush=True)
         
-        # Consistent delay to stay under rate limits
         time.sleep(1.2)
 
     con.close()
     print(f"Cleanup complete. Successfully updated {success_count} games.")
 
 if __name__ == "__main__":
-    # You can pass a limit via CLI, e.g., python cleanup_missing_data.py 100
     limit = int(sys.argv[1]) if len(sys.argv) > 1 else None
     cleanup(limit)

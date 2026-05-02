@@ -19,7 +19,6 @@ def unify_lineups():
     con = duckdb.connect(DB_PATH)
     logger.info("Starting Global Lineup Name Unification (Full Database)...")
 
-    # 1. Create the master mapping (Initial Name -> Full Name)
     meta_df = con.execute("SELECT PLAYER_NAME FROM player_metadata").df()
     match_map = {}
     for full_name in meta_df['PLAYER_NAME']:
@@ -29,10 +28,8 @@ def unify_lineups():
             init_name = f"{parts[0][0]}. {' '.join(parts[1:])}"
             match_map[init_name] = full_name
 
-    # 2. Update each of the 10 lineup columns
     columns = [f'OFF_{i}' for i in range(1, 6)] + [f'DEF_{i}' for i in range(1, 6)]
     
-    # We'll use a temporary mapping table for high performance
     map_df = pd.DataFrame(list(match_map.items()), columns=['OLD', 'NEW'])
     con.register('name_map_table', map_df)
     

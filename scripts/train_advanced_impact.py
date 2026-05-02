@@ -6,7 +6,6 @@ import joblib
 import os
 import logging
 
-# Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("AdvancedImpact")
 
@@ -17,8 +16,6 @@ def train_advanced_impact():
     con = duckdb.connect(DB_PATH)
     
     logger.info("Fetching possession-level surplus data...")
-    # We only want events where we have full lineup data
-    # Result = Actual Points - xPoints
     query = """
     SELECT 
         GAME_ID,
@@ -42,9 +39,6 @@ def train_advanced_impact():
 
     logger.info(f"Training on {len(df)} shot events...")
 
-    # Build Sparse Matrix
-    # Players are features. 
-    # Offensive players get +1, Defensive players get -1.
     all_players = pd.unique(df[[f"OFF_{i}" for i in range(1, 6)] + [f"DEF_{i}" for i in range(1, 6)]].values.ravel('K'))
     all_players = [p for p in all_players if p is not None]
     player_to_idx = {player: i for i, player in enumerate(all_players)}
@@ -59,15 +53,13 @@ def train_advanced_impact():
     data = []
     
     for i, row in enumerate(df.itertuples()):
-        # Offense
-        for j in range(3, 8): # OFF_1 to OFF_5
+        for j in range(3, 8):
             p = getattr(row, f"OFF_{j-2}")
             if p in player_to_idx:
                 rows.append(i)
                 cols.append(player_to_idx[p])
                 data.append(1)
-        # Defense
-        for j in range(8, 13): # DEF_1 to DEF_5
+        for j in range(8, 13):
             p = getattr(row, f"DEF_{j-7}")
             if p in player_to_idx:
                 rows.append(i)
@@ -78,18 +70,14 @@ def train_advanced_impact():
     y = df['SURPLUS'].values
 
     logger.info("Fitting Ridge Regression (Regularized Adjusted Plus-Minus)...")
-    # alpha is the regularization strength. 
-    # High alpha = more shrinkage to 0.
     model = Ridge(alpha=1000) 
     model.fit(X, y)
 
-    # Extract Results
     impact_df = pd.DataFrame({
         'PLAYER_NAME': all_players,
         'ADJUSTED_SURPLUS_IMPACT': model.coef_
     })
 
-    # Update player_metrics
     logger.info("Updating player_metrics with Adjusted Impact...")
     try:
         con.execute("ALTER TABLE player_metrics ADD COLUMN ADJUSTED_IMPACT FLOAT")
@@ -106,7 +94,6 @@ def train_advanced_impact():
     con.unregister('temp_impact')
     con.close()
     
-    # Save model for later use
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
     joblib.dump((model, all_players), MODEL_PATH)
     logger.info("Advanced Impact model training complete.")

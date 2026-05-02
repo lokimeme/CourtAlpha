@@ -6,7 +6,6 @@ import re
 import logging
 import unicodedata
 
-# Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("SpotracScraper")
 
@@ -15,9 +14,7 @@ URL = 'https://www.spotrac.com/nba/contracts/'
 
 def normalize_name(name):
     if not name: return None
-    # Normalize unicode (e.g., Jokić -> Jokic)
     name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii')
-    # Remove suffixes like Jr., III
     name = re.sub(r'\s+(Jr\.|III|II|IV|Sr\.)$', '', name)
     return name.strip()
 
@@ -59,7 +56,7 @@ def scrape_spotrac():
             norm_name = normalize_name(raw_name)
             
             pos = tds[1].text.strip()
-            team = tds[2].text.strip().split('\n')[0] # Handle the double team name in text
+            team = tds[2].text.strip().split('\n')[0]
             
             try:
                 length = int(re.sub(r'[^\d]', '', tds[6].text.strip()))
@@ -83,7 +80,6 @@ def scrape_spotrac():
             break
             
         page += 1
-        # Limit to 10 pages for MVP safety
         if page > 10: break
 
     if not all_players:
@@ -93,7 +89,6 @@ def scrape_spotrac():
     df = pd.DataFrame(all_players)
     logger.info(f"Successfully extracted {len(df)} player contracts across {page-1} pages.")
 
-    # Save to DuckDB
     con = duckdb.connect(DB_PATH)
     con.execute("DROP TABLE IF EXISTS contracts")
     con.execute("""
@@ -112,13 +107,10 @@ def scrape_spotrac():
     con.execute("INSERT INTO contracts SELECT * FROM temp_contracts")
     con.unregister('temp_contracts')
     
-    # Reset costs first
     con.execute("UPDATE player_metrics SET CONTRACT_COST = 0")
 
-    # Update player_metrics with real costs where available
     logger.info("Updating player_metrics with real contract costs (Fuzzy Matching)...")
     
-    # 1. Exact Match
     con.execute("""
         UPDATE player_metrics
         SET CONTRACT_COST = contracts.SALARY
@@ -126,7 +118,6 @@ def scrape_spotrac():
         WHERE player_metrics.PLAYER_NAME = contracts.PLAYER_NAME
     """)
     
-    # 2. Initial Match (A. Holiday -> Aaron Holiday)
     pending = con.execute("SELECT PLAYER_NAME FROM player_metrics WHERE CONTRACT_COST = 0").df()
     if not pending.empty:
         init_map = {}
@@ -154,7 +145,6 @@ def scrape_spotrac():
             """)
             con.unregister('temp_fuzzy')
 
-    # For players not found in Spotrac, we'll keep a minimum/default if they have FGA
     con.execute("UPDATE player_metrics SET CONTRACT_COST = 1121428 WHERE CONTRACT_COST = 0 AND FGA > 0")
     
     con.close()

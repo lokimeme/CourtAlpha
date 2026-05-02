@@ -28,8 +28,6 @@ class SynergyEngine:
         """
         print("Running Skill-Based Archetype Clustering Engine...")
         
-        # 1. Pivot micro-actions to get player-specific skill frequencies
-        # We normalize by total shot attempts to get a 'Skill DNA' profile
         skill_df = self.con.execute("""
             SELECT 
                 PLAYER_NAME,
@@ -52,7 +50,6 @@ class SynergyEngine:
             print("Not enough skill data for clustering.")
             return
 
-        # 2. Add Impact and Efficiency to the profile
         metrics = self.con.execute("""
             SELECT PLAYER_NAME, SHRUNK_IMPACT, X_EFG_PCT 
             FROM player_metrics
@@ -60,7 +57,6 @@ class SynergyEngine:
         
         df = skill_df.merge(metrics, on='PLAYER_NAME', how='inner')
 
-        # 3. K-Means Clustering on Skill DNA + Impact
         feature_cols = [c for c in df.columns if 'FREQ' in c] + ['SHRUNK_IMPACT', 'X_EFG_PCT']
         features = df[feature_cols].fillna(0)
         
@@ -71,7 +67,6 @@ class SynergyEngine:
         df['ARCHETYPE_ID'] = kmeans.fit_predict(scaled_features)
         df['ARCHETYPE_NAME'] = df['ARCHETYPE_ID'].map(self.archetypes)
 
-        # Update the database
         try:
             self.con.execute("ALTER TABLE player_metrics ADD COLUMN ARCHETYPE_NAME VARCHAR")
         except: pass
@@ -91,7 +86,6 @@ class SynergyEngine:
         Phase 2.3: Advanced Synergy Predictor (v2.0)
         Calculates compatibility based on Stat-to-Stat interactions.
         """
-        # Fetching detailed profiles (using current columns and new experimental ones)
         query = """
             SELECT 
                 PLAYER_NAME, ARCHETYPE_NAME, SHRUNK_IMPACT, X_EFG_PCT,
@@ -107,35 +101,26 @@ class SynergyEngine:
         p1 = results[results['PLAYER_NAME'] == star_name].iloc[0]
         p2 = results[results['PLAYER_NAME'] == target_name].iloc[0]
 
-        synergy_score = 50.0 # Baseline
+        synergy_score = 50.0
 
-        # 1. SPACING SYNERGY (Gravity Balance)
-        # If one player is a low-spacing archetype, the other MUST be high-spacing.
         p1_low_spacing = p1['ARCHETYPE_NAME'] in ["Elite Rim Protector", "High-Usage Slasher"]
         p2_high_spacing = p2['ARCHETYPE_NAME'] in ["3&D Wing", "Movement Shooter"]
         
         if p1_low_spacing and p2_high_spacing:
             synergy_score += 20.0
         elif p1_low_spacing and p2['ARCHETYPE_NAME'] == "Elite Rim Protector":
-            synergy_score -= 15.0 # "Clogged Paint" Penalty
+            synergy_score -= 15.0
 
-        # 2. PLAYMAKING SYNERGY (Usage vs. Creation)
-        # Avoid "Too many cooks" (Two high-usage slashers)
         if p1['ARCHETYPE_NAME'] == "High-Usage Slasher" and p2['ARCHETYPE_NAME'] == "High-Usage Slasher":
             synergy_score -= 10.0
         
-        # Complementary: Slasher + Floor General or Connector
         if p1['ARCHETYPE_NAME'] == "High-Usage Slasher" and p2['ARCHETYPE_NAME'] in ["Floor General", "Connector / High-IQ Big"]:
             synergy_score += 15.0
 
-        # 3. DEFENSIVE COVERAGE (Interior + Perimeter)
-        # Elite Rim Protector + Point-of-Attack Defender = Elite Synergy
         def_pair = {p1['ARCHETYPE_NAME'], p2['ARCHETYPE_NAME']}
         if "Elite Rim Protector" in def_pair and "Point-of-Attack Defender" in def_pair:
             synergy_score += 25.0
 
-        # 4. RAPM OVERLAY
-        # If target has positive Adjusted Impact (RAPM) but low total points, they are a "Hidden Glue Guy"
         if p2['RAPM'] > 1.5 and p2['SHRUNK_IMPACT'] < 1.0:
             synergy_score += 10.0
 
@@ -160,7 +145,6 @@ class SynergyEngine:
             scores.append(score)
 
         all_players['SYNERGY_SCORE'] = scores
-        # A 'Hidden Gem' has high synergy but might have lower Shrunk Impact (undervalued)
         return all_players.sort_values(by='SYNERGY_SCORE', ascending=False).head(top_n)
 
 if __name__ == "__main__":

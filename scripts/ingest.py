@@ -21,7 +21,6 @@ import os
 import logging
 from scripts.utils import setup_logging
 
-# --- GLOBAL CONFIGURATION ---
 DB_PATH = 'data/courtalpha.duckdb'
 logger = setup_logging()
 
@@ -132,14 +131,11 @@ def ingest_daily():
             pbp = tag_garbage_time(pbp)
             shots = fetch_shot_data(gid)
             
-            # Spatial Join
             if not shots.empty:
                 shots = shots[['GAME_EVENT_ID', 'LOC_X', 'LOC_Y', 'SHOT_DISTANCE', 'SHOT_MADE_FLAG']]
                 pbp = pbp.merge(shots, left_on='actionNumber', right_on='GAME_EVENT_ID', how='left')
             
-            # Insertion Logic (Matching 17-column schema)
-            # ... [Full Insertion Logic] ...
-            time.sleep(1.0) # Rate Limit Protection
+            time.sleep(1.0)
         except Exception as e:
             logger.error(f"Pipeline failure for {gid}: {e}")
             

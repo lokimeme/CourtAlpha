@@ -8,7 +8,6 @@ import os
 import sys
 import unicodedata
 
-# Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -23,7 +22,6 @@ DB_PATH = 'data/courtalpha.duckdb'
 
 def normalize_name(name):
     if not isinstance(name, str): return None
-    # Normalize unicode (e.g., Jokić -> Jokic)
     name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii')
     return name.strip()
 
@@ -37,8 +35,6 @@ def setup_columns(con):
             con.execute(f"ALTER TABLE play_by_play ADD COLUMN {col} VARCHAR")
 
 def get_pending_games(con):
-    # Check for games that haven't been processed
-    # We look for games where OFF_1 is null
     query = """
     SELECT DISTINCT GAME_ID 
     FROM play_by_play 
@@ -65,7 +61,7 @@ def process_game(game_id, con):
     home_team_id = box_data['homeTeam']['teamId']
     away_team_id = box_data['awayTeam']['teamId']
     
-    player_info = {} # personId -> {teamId, pbpName, familyName, fullName}
+    player_info = {}
     name_to_ids = {home_team_id: {}, away_team_id: {}}
     
     def map_team_players(team_data, team_id):
@@ -77,7 +73,6 @@ def process_game(game_id, con):
             lname = normalize_name(p['familyName'])
             full_name = f"{fname} {lname}"
             
-            # PBP Name is usually J. Brown
             pbp_name = f"{fname[0]}. {lname}"
             
             player_info[pid] = {
@@ -87,7 +82,6 @@ def process_game(game_id, con):
                 'fullName': full_name
             }
             
-            # Map various name forms to personId
             for name_form in [pbp_name, lname, full_name]:
                 if name_form not in name_to_ids[team_id]:
                     name_to_ids[team_id][name_form] = []
@@ -96,13 +90,11 @@ def process_game(game_id, con):
     map_team_players(box_data['homeTeam'], home_team_id)
     map_team_players(box_data['awayTeam'], away_team_id)
 
-    # Starters
     current_lineups = {
         home_team_id: set(p['personId'] for p in box_data['homeTeam']['players'] if p['position'] != ""),
         away_team_id: set(p['personId'] for p in box_data['awayTeam']['players'] if p['position'] != "")
     }
 
-    # Fetch PBP
     pbp_df = con.execute(f"SELECT * FROM play_by_play WHERE GAME_ID = '{game_id}' ORDER BY PERIOD, ACTION_NUMBER").df()
     
     updates = []
@@ -112,19 +104,15 @@ def process_game(game_id, con):
         description = row['DESCRIPTION']
         player_name = normalize_name(row['PLAYER_NAME'])
         
-        # Handle Substitution
         if action_type == 'Substitution' and " FOR " in description:
-            # Format: SUB: Booker FOR O'Neale or SUB: D. Booker FOR R. O'Neale
             match = re.search(r"SUB: (.*) FOR (.*)", description)
             if match:
                 p_in_name = normalize_name(match.group(1).strip())
                 p_out_name = normalize_name(match.group(2).strip())
                 
-                # Identify team and p_out_id
                 target_team_id = None
                 p_out_id = None
                 
-                # Try to find p_out in current lineups
                 for tid, lineup in current_lineups.items():
                     for pid in lineup:
                         info = player_info[pid]
@@ -135,12 +123,9 @@ def process_game(game_id, con):
                     if target_team_id: break
                 
                 if target_team_id and p_out_id:
-                    # Identify p_in_id
                     p_in_id = None
-                    # Try exact match in target team
                     candidates = name_to_ids[target_team_id].get(p_in_name, [])
                     if not candidates:
-                        # Try fuzzy/endswith
                         for name, ids in name_to_ids[target_team_id].items():
                             if name.endswith(p_in_name):
                                 candidates = ids
@@ -153,7 +138,6 @@ def process_game(game_id, con):
                         current_lineups[target_team_id].discard(p_out_id)
                         current_lineups[target_team_id].add(p_in_id)
         
-        # Determine Offensive Team
         off_team_id = None
         if player_name:
             for tid in [home_team_id, away_team_id]:
@@ -169,18 +153,15 @@ def process_game(game_id, con):
                             break
                     if off_team_id: break
         
-        # Defaulting
         if not off_team_id:
             off_team_id = home_team_id
             def_team_id = away_team_id
         else:
             def_team_id = away_team_id if off_team_id == home_team_id else home_team_id
         
-        # Prepare lineup names (using pbpName for consistency)
         off_lineup = sorted([player_info[pid]['pbpName'] for pid in current_lineups[off_team_id]])
         def_lineup = sorted([player_info[pid]['pbpName'] for pid in current_lineups[def_team_id]])
         
-        # Pad to 5
         while len(off_lineup) < 5: off_lineup.append(None)
         while len(def_lineup) < 5: def_lineup.append(None)
         
@@ -231,7 +212,7 @@ def main():
             except Exception as e:
                 logger.error(f"Critical error processing {game_id}: {e}")
                 
-            time.sleep(0.8) # Rate limiting
+            time.sleep(0.8)
             
         con.close()
         logger.info("Batch complete. Checking for more games...")

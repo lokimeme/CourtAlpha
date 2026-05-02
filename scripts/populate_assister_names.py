@@ -14,7 +14,6 @@ def extract_assister_name(description):
     if not description:
         return None
     
-    # Format: "... (Player 1 AST)"
     match = re.search(r'\(([^)]+)\s\d+\sAST\)', description)
     if match:
         return normalize_name(match.group(1))

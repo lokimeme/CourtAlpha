@@ -19,7 +19,6 @@ from sklearn.preprocessing import StandardScaler
 import logging
 from scripts.utils import setup_logging
 
-# --- CONFIGURATION ---
 DB_PATH = 'data/courtalpha.duckdb'
 logger = setup_logging()
 
@@ -56,15 +55,12 @@ class SimilarityAnalyzer:
             logger.warning("Insufficient player pool for similarity analysis.")
             return pd.DataFrame()
             
-        # 1. Feature Selection & Preprocessing
         features = ['SHRUNK_IMPACT', 'X_EFG_PCT', 'TRAJECTORY_SCORE']
         data = df[features].fillna(df[features].mean())
         
-        # 2. Vector Normalization
         scaler = StandardScaler()
         scaled_data = scaler.fit_transform(data)
         
-        # 3. Target Vector Extraction
         try:
             target_idx = df[df['PLAYER_NAME'] == player_name].index[0]
             target_vector = scaled_data[target_idx].reshape(1, -1)
@@ -72,18 +68,15 @@ class SimilarityAnalyzer:
             logger.error(f"Player {player_name} not found in ML pool.")
             return pd.DataFrame()
 
-        # 4. Nearest Neighbors Fitting
         knn = NearestNeighbors(n_neighbors=k+1, algorithm='auto', metric='euclidean')
         knn.fit(scaled_data)
         
         distances, indices = knn.kneighbors(target_vector)
         
-        # 5. Result Formatting (Excluding target player)
         comp_indices = indices[0][1:]
         comps = df.iloc[comp_indices].copy()
         comps['SIMILARITY_DISTANCE'] = distances[0][1:]
         
-        # Inversion of distance to create a 0-100% Score
         max_d = distances[0].max() if distances[0].max() > 0 else 1
         comps['SIMILARITY_SCORE'] = comps['SIMILARITY_DISTANCE'].apply(lambda x: max(0, int(100 * (1 - x/max_d))))
         

@@ -16,8 +16,6 @@ def run_final_ml_pipeline():
     
     logger.info("Phase 2.1: Calculating Efficiency Metrics (eFG% vs xEFG%)...")
     
-    # Calculate player efficiency
-    # xEFG is derived from X_POINTS (which we trained using micro-actions)
     efficiency_query = """
         SELECT 
             PLAYER_NAME,
@@ -36,18 +34,13 @@ def run_final_ml_pipeline():
 
     logger.info("Phase 2.2: Integrating RAPM and Skill-DNA...")
     
-    # Pull current RAPM (ADJUSTED_IMPACT)
     rapm_df = con.execute("SELECT PLAYER_NAME, ADJUSTED_IMPACT FROM player_metrics").df()
     
-    # Merge
     master_df = eff_df.merge(rapm_df, on='PLAYER_NAME', how='left').fillna(0)
     
-    # Bayesian Shrinkage for Impact
-    # Regularize RAPM towards 0 based on sample size (FGA as proxy for possessions)
     lmbda = 500
     master_df['SHRUNK_IMPACT'] = master_df['ADJUSTED_IMPACT'] * (master_df['FGA'] / (master_df['FGA'] + lmbda))
 
-    # Phase 2.3: Skill-DNA Clustering
     logger.info("Phase 2.3: Skill-DNA Clustering...")
     skill_DNA = con.execute("""
         SELECT 
@@ -91,7 +84,6 @@ def run_final_ml_pipeline():
 
     logger.info("Updating player_metrics table with high-fidelity scores...")
     
-    # We'll re-initialize the table to be clean and descriptive
     con.execute("DROP TABLE IF EXISTS player_metrics")
     con.execute("""
         CREATE TABLE player_metrics (

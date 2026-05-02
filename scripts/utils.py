@@ -9,7 +9,6 @@ import logging
 import duckdb
 from datetime import datetime
 
-# --- LOGGING CONFIGURATION ---
 def setup_logging():
     """Configures professional logging for the ingestion and ML pipelines."""
     log_dir = "logs"
@@ -29,7 +28,6 @@ def setup_logging():
     )
     return logging.getLogger("CourtAlpha")
 
-# --- DATABASE MANAGEMENT ---
 class DBManager:
     """Manages connections and transactions for the DuckDB backend."""
     def __init__(self, db_path='data/courtalpha.duckdb'):
@@ -43,7 +41,6 @@ class DBManager:
             logging.error(f"Database Connection Failed: {e}")
             return None
 
-# --- FORMATTING HELPERS ---
 def format_currency(value):
     """Converts raw floats into professional currency strings ($M)."""
     if value >= 1000000:
@@ -60,7 +57,6 @@ def calculate_percentile(value, distribution):
     less_than = len([x for x in distribution if x < value])
     return (less_than / len(distribution)) * 100
 
-# --- MATH HELPERS ---
 def shrink_value(raw_val, sample_size, prior=0, lmbda=300):
     """
     Implements Bayesian Shrinkage.
