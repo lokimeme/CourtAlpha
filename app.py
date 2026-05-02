@@ -32,11 +32,20 @@ DB_PATH = os.path.join(os.path.dirname(__file__), 'data/courtalpha.duckdb')
 
 @st.cache_data
 def load_data():
-    if not os.path.exists(DB_PATH):
-        st.error(f"Database not found at {DB_PATH}.")
+    base_dir = os.path.dirname(__file__)
+    data_dir = os.path.join(base_dir, 'data')
+    db_path = os.path.join(data_dir, 'courtalpha.duckdb')
+    
+    if not os.path.exists(db_path):
+        st.error(f"DB not found at: {db_path}")
+        st.write("Listing root contents:", os.listdir(base_dir))
+        if os.path.exists(data_dir):
+            st.write("Listing data/ contents:", os.listdir(data_dir))
+        else:
+            st.warning("data/ directory is MISSING in deployment!")
         return pd.DataFrame()
         
-    con = duckdb.connect(DB_PATH, read_only=True)
+    con = duckdb.connect(db_path, read_only=True)
     
     # 1. Base Metrics
     df = con.execute("SELECT * FROM player_metrics").df()
