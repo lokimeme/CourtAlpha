@@ -5,8 +5,10 @@ import time
 def test_boxscore(game_id):
     try:
         box = boxscoretraditionalv3.BoxScoreTraditionalV3(game_id=game_id)
+        # The new v3 endpoints often have different structures. Let's see what's in box.get_dict()
         data = box.get_dict()
         print("Keys in BoxScoreTraditionalV3 dict:", data.keys())
+        # Usually it's in 'boxScoreTraditional'
         if 'boxScoreTraditional' in data:
             box_data = data['boxScoreTraditional']
             home_team = box_data['homeTeam']
@@ -19,6 +21,7 @@ def test_boxscore(game_id):
             away_players = pd.DataFrame(away_players_data := away_team['players'])
             
             print("\nHome Starters:")
+            # Starters usually have a position (G, F, C, etc.) whereas bench players have empty position
             home_starters = home_players[home_players['position'] != ""]
             print(home_starters[['firstName', 'familyName', 'position', 'personId']])
             
@@ -30,4 +33,5 @@ def test_boxscore(game_id):
         print(f"Error: {e}")
 
 if __name__ == "__main__":
+    # Use a recent game ID
     test_boxscore("0022400001")

@@ -3,44 +3,67 @@ import pandas as pd
 import numpy as np
 
 class ContextSuppressionEngine:
-    
+    """
+    The 'Hidden Gem' Discovery Core.
+    Analyzes players whose statistical output is 'suppressed' by poor teammate spacing.
+    """
     def __init__(self, db_path='data/courtalpha.duckdb'):
         self.con = duckdb.connect(db_path)
         
     def calculate_team_spacing_scores(self):
-        
+        """
+        Calculates a 'Spacing Rating' for every team based on the average 3PT 
+        capabilities of the lineups a player is in.
+        """
+        # Simulated logic: Team IDs and their relative spacing (In real app, derived from PBP)
         spacing_metrics = {
-            "OKC": 115.0,
+            "OKC": 115.0, # Elite spacing
             "BOS": 120.0,
-            "DET": 92.0,
+            "DET": 92.0,  # Poor spacing
             "ORL": 95.0,
             "LAL": 102.0
         }
         return spacing_metrics
 
     def find_suppressed_talents(self, min_possessions=300):
-        
-        df = self.con.execute(, [min_possessions]).df()
+        """
+        Flags players who have high expected eFG% (shot quality) 
+        despite playing in low-spacing environments.
+        """
+        df = self.con.execute("""
+            SELECT PLAYER_NAME, SHRUNK_IMPACT, X_EFG_PCT, POSSESSIONS, FLAGS
+            FROM player_metrics
+            WHERE POSSESSIONS >= ?
+        """, [min_possessions]).df()
         
         spacing_map = self.calculate_team_spacing_scores()
         
+        # We'll assign a mock team to players for the prototype
+        # Real version would join play_by_play team data
         suppression_scores = []
         for _, row in df.iterrows():
+            # Randomly assign spacing score if team unknown
             base_spacing = np.random.choice(list(spacing_map.values()))
             
+            # The 'Suppression Factor'
+            # If spacing is low (<100) and expected eFG is high (>0.50), the player is 'Suppressed'
             suppression_factor = (110 - base_spacing) / 10 * (row['X_EFG_PCT'] * 2)
             suppression_scores.append(max(0, suppression_factor))
             
         df['SUPPRESSION_SCORE'] = suppression_scores
         
+        # 'True Impact' is Shrunk Impact + Suppression Adjustment
         df['ADJUSTED_IMPACT'] = df['SHRUNK_IMPACT'] + (df['SUPPRESSION_SCORE'] * 1.5)
         
+        # Identify 'Breakout Candidates'
         df['IS_HIDDEN_GEM'] = (df['SUPPRESSION_SCORE'] > 2.0) & (df['SHRUNK_IMPACT'] < 3.0)
         
         return df.sort_values(by='SUPPRESSION_SCORE', ascending=False)
 
     def get_discovery_narrative(self, player_name):
-        
+        """
+        Provides a front-office narrative for why this player is a hidden gem.
+        """
         data = self.find_suppressed_talents()
         p_row = data[data['PLAYER_NAME'] == player_name]
         

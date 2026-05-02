@@ -2,28 +2,35 @@ import pandas as pd
 import numpy as np
 
 class CBAEngine:
-    
+    """
+    Deep CBA Logic Engine (2023 Collective Bargaining Agreement)
+    This module handles complex salary matching, tax calculations, and apron restrictions.
+    """
     def __init__(self, season="2025-26"):
         self.season = season
+        # Salary Cap Parameters (Estimated for 2025-26)
         self.SALARY_CAP = 155000000
         self.LUXURY_TAX_LEVEL = 188328000
         self.FIRST_APRON = 195000000
         self.SECOND_APRON = 208000000
         
     def calculate_tax_bill(self, total_salary):
-        
+        """
+        Calculates the luxury tax bill based on the 2023 graduated tax brackets.
+        """
         if total_salary <= self.LUXURY_TAX_LEVEL:
             return 0
         
         excess = total_salary - self.LUXURY_TAX_LEVEL
         tax = 0
         
+        # Graduated Brackets (Simplified)
         brackets = [
-            (5000000, 1.50),
-            (5000000, 1.75),
-            (5000000, 2.50),
-            (5000000, 3.25),
-            (float('inf'), 3.75)
+            (5000000, 1.50),  # $0 - $5M
+            (5000000, 1.75),  # $5M - $10M
+            (5000000, 2.50),  # $10M - $15M
+            (5000000, 3.25),  # $15M - $20M
+            (float('inf'), 3.75) # $20M+ (base increment)
         ]
         
         remaining = excess
@@ -36,28 +43,35 @@ class CBAEngine:
         return tax
 
     def check_trade_legality(self, outgoing_salaries, incoming_salaries, team_total_salary):
-        
+        """
+        Implements the 2023 Trade Matching Rules.
+        """
         status = {"legal": True, "notes": [], "hard_cap_triggered": False}
         
         outgoing_total = sum(outgoing_salaries)
         incoming_total = sum(incoming_salaries)
         
+        # Apron Restrictions
         if team_total_salary > self.SECOND_APRON:
             status["notes"].append("Team is over the Second Apron.")
+            # Rule: Cannot aggregate salaries
             if len(outgoing_salaries) > 1:
                 status["legal"] = False
                 status["notes"].append("BLOCK: Second Apron teams cannot aggregate salaries in trades.")
+            # Rule: Cannot take back more than 100%
             if incoming_total > outgoing_total:
                 status["legal"] = False
                 status["notes"].append(f"BLOCK: Second Apron teams cannot acquire more than 100% of outgoing salary (${outgoing_total:,.0f}).")
         
         elif team_total_salary > self.FIRST_APRON:
             status["notes"].append("Team is over the First Apron.")
+            # Rule: Cannot take back more than 100%
             if incoming_total > outgoing_total:
                 status["legal"] = False
                 status["notes"].append(f"BLOCK: First Apron teams cannot acquire more than 100% of outgoing salary.")
         
         else:
+            # Standard Matching Rules
             if outgoing_total <= 6525000:
                 max_incoming = outgoing_total * 2.0 + 100000
             elif outgoing_total <= 19600000:
@@ -72,7 +86,9 @@ class CBAEngine:
         return status
 
     def get_apron_exposure(self, team_salary, projection_years=3):
-        
+        """
+        Calculates future apron exposure based on 10% annual cap growth.
+        """
         projections = []
         current_salary = team_salary
         for i in range(1, projection_years + 1):
@@ -80,6 +96,7 @@ class CBAEngine:
             year_first = self.FIRST_APRON * (1.10 ** i)
             year_second = self.SECOND_APRON * (1.10 ** i)
             
+            # Assume 8% average roster growth if not trading
             est_salary = current_salary * (1.08 ** i)
             
             state = "Healthy"
@@ -96,7 +113,9 @@ class CBAEngine:
         return projections
 
     def explain_repeater_tax(self, team_history):
-        
+        """
+        Explains the penalty logic for repeater teams (taxed 3 of last 4 years).
+        """
         if sum(team_history) >= 3:
             return "Repeater status active. Tax rates increased by $1.00 per bracket."
         return "Non-repeater status."

@@ -8,11 +8,33 @@ DB_PATH = 'data/courtalpha.duckdb'
 
 def setup_db():
     con = duckdb.connect(DB_PATH)
-    con.execute()
+    # Ensure schema is correct and up to date
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS play_by_play (
+            GAME_ID VARCHAR,
+            ACTION_NUMBER INTEGER,
+            PERIOD INTEGER,
+            CLOCK VARCHAR,
+            ACTION_TYPE VARCHAR,
+            SUB_TYPE VARCHAR,
+            DESCRIPTION VARCHAR,
+            SCORE_HOME VARCHAR,
+            SCORE_AWAY VARCHAR,
+            GARBAGE_TIME BOOLEAN,
+            OPP_DEF_RATING FLOAT,
+            LOC_X FLOAT,
+            LOC_Y FLOAT,
+            SHOT_DISTANCE FLOAT,
+            SHOT_MADE_FLAG INTEGER,
+            SEASON VARCHAR,
+            MICRO_ACTION VARCHAR,
+            PRIMARY KEY (GAME_ID, ACTION_NUMBER)
+        )
+    """)
     con.close()
 
 def fetch_shot_data(game_id):
-    
+    """Retrieves spatial coordinates (X, Y) for every field goal attempt."""
     try:
         shot_data = shotchartdetail.ShotChartDetail(
             team_id=0, 
@@ -67,9 +89,11 @@ def backfill_seasons(seasons_list, limit=None, regular_only=True):
             pbp_raw = playbyplayv3.PlayByPlayV3(game_id=game_id)
             df = pbp_raw.get_data_frames()[0]
             
+            # Shot Data Enrichment
             shots = fetch_shot_data(game_id)
             if not shots.empty:
                 shots = shots[['GAME_EVENT_ID', 'LOC_X', 'LOC_Y', 'SHOT_DISTANCE', 'SHOT_MADE_FLAG']]
+                # Ensure types match for merge
                 df['actionNumber'] = df['actionNumber'].astype(int)
                 shots['GAME_EVENT_ID'] = shots['GAME_EVENT_ID'].astype(int)
                 df = df.merge(shots, left_on='actionNumber', right_on='GAME_EVENT_ID', how='left')
@@ -77,6 +101,7 @@ def backfill_seasons(seasons_list, limit=None, regular_only=True):
                 for col in ['LOC_X', 'LOC_Y', 'SHOT_DISTANCE', 'SHOT_MADE_FLAG']:
                     df[col] = None
 
+            # Garbage Time Logic
             df['GARBAGE_TIME'] = False
             if 'scoreHome' in df.columns and 'scoreAway' in df.columns:
                 def check_gt(r):
@@ -88,6 +113,7 @@ def backfill_seasons(seasons_list, limit=None, regular_only=True):
                     return False
                 df['GARBAGE_TIME'] = df.apply(check_gt, axis=1)
 
+            # Prepare for insertion
             df_insert = pd.DataFrame()
             df_insert['GAME_ID'] = [game_id] * len(df)
             df_insert['ACTION_NUMBER'] = df['actionNumber']
@@ -110,9 +136,10 @@ def backfill_seasons(seasons_list, limit=None, regular_only=True):
             cols = "(GAME_ID, ACTION_NUMBER, PERIOD, CLOCK, ACTION_TYPE, SUB_TYPE, DESCRIPTION, SCORE_HOME, SCORE_AWAY, GARBAGE_TIME, OPP_DEF_RATING, LOC_X, LOC_Y, SHOT_DISTANCE, SHOT_MADE_FLAG, SEASON, MICRO_ACTION)"
             con.register('df_view', df_insert)
             
+            # Use INSERT OR REPLACE to update existing games with new columns
             con.execute(f"INSERT OR REPLACE INTO play_by_play {cols} SELECT * FROM df_view")
             
-            time.sleep(0.8)
+            time.sleep(0.8) # Respect API
         except Exception as e:
             print(f"Error {game_id}: {e}", flush=True)
             time.sleep(5)
@@ -120,11 +147,13 @@ def backfill_seasons(seasons_list, limit=None, regular_only=True):
     con.close()
 
 if __name__ == "__main__":
+    # Standard configuration for 8 seasons (Regular + Playoffs)
     target_seasons = [
         '2018-19', '2019-20', '2020-21', '2021-22', 
         '2022-23', '2023-24', '2024-25', '2025-26'
     ] 
     
+    # Toggle this to True for a quick verification batch
     IS_TEST = False
     
     if IS_TEST:

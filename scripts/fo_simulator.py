@@ -2,26 +2,38 @@ import pandas as pd
 import numpy as np
 
 class FrontOfficeSimulator:
-    
+    """
+    Multi-Year Roster Simulation Engine.
+    Projects team win-probability and cap health over a 5-season horizon.
+    """
     def __init__(self, initial_roster, initial_cap=155000000):
-        self.roster = initial_roster
+        self.roster = initial_roster # DataFrame of players
         self.current_cap = initial_cap
         self.seasons = ["2025-26", "2026-27", "2027-28", "2028-29", "2029-30"]
 
     def project_aging_curve(self, current_impact, age, years_out):
-        
+        """
+        Simulates the standard NBA aging curve.
+        Peak: 25-29, Decline: 30+.
+        """
         new_age = age + years_out
         if new_age < 25:
+            # Young player growth
             return current_impact * (1.10 ** years_out)
         elif new_age < 30:
+            # Peak years
             return current_impact * (1.02 ** years_out)
         else:
+            # Athletic decline
             return current_impact * (0.92 ** years_out)
 
     def simulate_season(self, year_index):
-        
+        """
+        Calculates team Net Rating and Cap Space for a specific future season.
+        """
         results = []
         for _, player in self.roster.iterrows():
+            # Estimate current age (Simulated)
             age = 24 if "Wembanyama" in player['PLAYER_NAME'] else 28
             
             projected_impact = self.project_aging_curve(
@@ -30,6 +42,8 @@ class FrontOfficeSimulator:
                 year_index
             )
             
+            # Estimate contract status
+            # Simplified: 20% chance per year a contract expires
             is_expired = np.random.random() < (0.2 * year_index)
             status = "Under Contract" if not is_expired else "Free Agent"
             
@@ -42,13 +56,16 @@ class FrontOfficeSimulator:
         return pd.DataFrame(results)
 
     def run_5_year_strategy(self):
-        
+        """
+        Generates a strategic outlook for the Front Office.
+        """
         outlooks = []
         for i in range(5):
             season_df = self.simulate_season(i)
             avg_impact = season_df['Projected_Impact'].mean()
             active_count = len(season_df[season_df['Status'] == "Under Contract"])
             
+            # Heuristic for Win Total
             projected_wins = 41 + (avg_impact * 2)
             
             outlooks.append({
@@ -61,7 +78,9 @@ class FrontOfficeSimulator:
         return pd.DataFrame(outlooks)
 
     def generate_rebuild_advice(self):
-        
+        """
+        Analyzes the 5-year outlook to suggest trade or rebuild actions.
+        """
         outlook = self.run_5_year_strategy()
         final_wins = outlook.iloc[-1]['Projected_Wins']
         
@@ -73,6 +92,7 @@ class FrontOfficeSimulator:
             return "🟡 TREADMILL RISK: Team is projected for mediocrity. Look for high-trajectory 'Hidden Gems' to break the ceiling."
 
 if __name__ == "__main__":
+    # Mock roster
     mock_r = pd.DataFrame([
         {'PLAYER_NAME': 'Star A', 'SHRUNK_IMPACT': 8.5},
         {'PLAYER_NAME': 'Gem B', 'SHRUNK_IMPACT': 4.2},
