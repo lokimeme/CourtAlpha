@@ -103,7 +103,7 @@ else:
             st.write(f"**Team:** {p['TEAM']} | **Age:** {p['AGE']} | **Archetype:** {p['ARCHETYPE_NAME']}")
             
             color = "#00ffcc" if "Pillar" in p['STRATEGIC_OUTLOOK'] else "#ffcc00" if "Engine" in p['STRATEGIC_OUTLOOK'] else "#ffffff"
-            st.markdown(f"### Outlook: <span style='color:{color}'>{p['STRATEGIC_OUTLOOK']}</span>", unsafe_allow_stdio=True)
+            st.markdown(f"### Outlook: <span style='color:{color}'>{p['STRATEGIC_OUTLOOK']}</span>", unsafe_allow_html=True)
             
             st.markdown("---")
             st.metric("Meta-Impact (Pts/100)", f"{p['META_IMPACT']:.2f}")
