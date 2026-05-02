@@ -12,19 +12,19 @@ st.set_page_config(page_title="CourtAlpha | Front Office Dashboard", layout="wid
 st.markdown("""
     <style>
     .main {
-        background-color:
+        background-color: #0e1117;
     }
     .stMetric {
-        background-color:
+        background-color: #1e2130;
         padding: 15px;
         border-radius: 10px;
-        border: 1px solid
+        border: 1px solid #3e4253;
     }
-    .status-pillar { color:
-    .status-engine { color:
-    .status-risk { color:
+    .status-pillar { color: #00ffcc; font-weight: bold; }
+    .status-engine { color: #ffcc00; font-weight: bold; }
+    .status-risk { color: #ff4b4b; font-weight: bold; }
     </style>
-""", unsafe_allow_stdio=True)
+""", unsafe_allow_html=True)
 
 DB_PATH = 'data/courtalpha.duckdb'
 
