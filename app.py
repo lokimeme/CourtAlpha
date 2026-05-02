@@ -76,9 +76,53 @@ def load_data():
 st.sidebar.title("🏀 CourtAlpha v2.5")
 st.sidebar.markdown("*Executive Intelligence Suite*")
 st.sidebar.markdown("---")
-nav = st.sidebar.radio("Navigation", ["Executive Summary", "Player Intelligence", "Trade Simulator", "Economic Layer"])
+nav = st.sidebar.radio("Navigation", ["Executive Summary", "Player Intelligence", "Lineup Optimizer", "Trade Simulator", "Economic Layer"])
 
 df = load_data()
+
+def optimize_lineup(star_name, players_df):
+    star = players_df[players_df['PLAYER_NAME'] == star_name].iloc[0]
+    others = players_df[players_df['PLAYER_NAME'] != star_name]
+    
+    lineup = [star]
+    
+    # Define role requirements
+    roles = {
+        "Initiator": ["Floor General", "High-Usage Slasher", "Versatile Forward"],
+        "Interior": ["Elite Rim Protector", "Connector / High-IQ Big"],
+        "Spacing": ["3&D Wing", "Movement Shooter"],
+        "POA": ["Point-of-Attack Defender", "3&D Wing"]
+    }
+    
+    # Identify which roles the star fills
+    star_arch = star['ARCHETYPE_NAME']
+    filled_roles = []
+    for role, archs in roles.items():
+        if star_arch in archs:
+            filled_roles.append(role)
+            break # Assign only one primary role to star
+            
+    # Need to fill remaining roles
+    required_roles = [r for r in roles.keys() if r not in filled_roles]
+    
+    # For a 5-man lineup, if star fills 1 role, we need 4 more. 
+    # If star fills 0 (unlikely with our archetypes), we need 5.
+    # To keep it simple, we'll fill the remaining predefined slots + generic impact
+    
+    for role in required_roles:
+        possible = others[others['ARCHETYPE_NAME'].isin(roles[role])]
+        if not possible.empty:
+            best_fit = possible.sort_values(by='META_IMPACT', ascending=False).iloc[0]
+            lineup.append(best_fit)
+            others = others[others['PLAYER_NAME'] != best_fit['PLAYER_NAME']]
+            
+    # Fill remaining spots to reach 5 players with highest remaining meta-impact
+    while len(lineup) < 5 and not others.empty:
+        best_impact = others.sort_values(by='META_IMPACT', ascending=False).iloc[0]
+        lineup.append(best_impact)
+        others = others[others['PLAYER_NAME'] != best_impact['PLAYER_NAME']]
+        
+    return pd.DataFrame(lineup)
 
 if df.empty:
     st.error("No data found in database. Please run the ingestion and ML pipelines.")
@@ -179,6 +223,43 @@ else:
                 y=alt.Y('Action:N', sort='-x')
             ).properties(height=300)
             st.altair_chart(dna_chart, use_container_width=True)
+
+    # --- LINEUP OPTIMIZER ---
+    elif nav == "Lineup Optimizer":
+        st.title("Strategic Lineup Optimizer")
+        st.info("Select a star player and the system will recommend a balanced 5-man unit based on complementary archetypes and Meta-Impact.")
+        
+        star_player = st.selectbox("Select Star Player (The Anchor)", sorted(df['PLAYER_NAME'].unique()), index=0)
+        
+        if star_player:
+            rec_lineup = optimize_lineup(star_player, df)
+            
+            st.subheader(f"Recommended Lineup for {star_player}")
+            
+            cols = st.columns(5)
+            for i, (_, p) in enumerate(rec_lineup.iterrows()):
+                with cols[i]:
+                    color = "#00ffcc" if i == 0 else "#ffffff"
+                    st.markdown(f"**{'🌟 ' if i == 0 else ''}{p['PLAYER_NAME']}**")
+                    st.write(f"*{p['ARCHETYPE_NAME']}*")
+                    st.metric("Impact", f"{p['META_IMPACT']:.2f}")
+                    
+            st.markdown("---")
+            st.subheader("Unit Composition Analysis")
+            
+            total_unit_impact = rec_lineup['META_IMPACT'].sum()
+            avg_age = rec_lineup['AGE'].mean()
+            
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.metric("Total Lineup Meta-Impact", f"{total_unit_impact:.2f} Pts/100")
+            with c2:
+                st.metric("Average Unit Age", f"{avg_age:.1f}")
+            with c3:
+                total_cost = rec_lineup['CONTRACT_COST'].sum()
+                st.metric("Total Unit Salary", format_currency(total_cost))
+            
+            st.dataframe(rec_lineup[['PLAYER_NAME', 'ARCHETYPE_NAME', 'META_IMPACT', 'MARKET_VALUE', 'STRATEGIC_OUTLOOK']], use_container_width=True)
 
     elif nav == "Trade Simulator":
         st.title("CBA Trade Simulator")
