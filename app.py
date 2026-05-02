@@ -32,15 +32,24 @@ DB_PATH = os.path.join(os.path.dirname(__file__), 'data/courtalpha.duckdb')
 
 @st.cache_data
 def load_data():
-    base_dir = os.path.dirname(__file__)
-    data_dir = os.path.join(base_dir, 'data')
-    db_path = os.path.join(data_dir, 'courtalpha.duckdb')
+    from pathlib import Path
+    base_dir = Path(__file__).parent
+    db_path = base_dir / "data" / "courtalpha.duckdb"
     
-    if not os.path.exists(db_path):
-        st.error(f"DB not found at: {db_path}")
+    if not db_path.exists():
+        st.error(f"DB not found at: {db_path.absolute()}")
+        st.write("Root files:", [f.name for f in base_dir.iterdir()])
+        data_dir = base_dir / "data"
+        if data_dir.exists():
+            st.write("Data folder files:", [f.name for f in data_dir.iterdir()])
         return pd.DataFrame()
-        
-    con = duckdb.connect(db_path, read_only=True)
+    
+    size_mb = db_path.stat().st_size / (1024 * 1024)
+    if size_mb < 1:
+        st.error(f"⚠️ DATABASE ERROR: Found a 1KB pointer file ({size_mb:.2f}MB). GitHub LFS did not sync the real data to Streamlit.")
+        return pd.DataFrame()
+
+    con = duckdb.connect(str(db_path), read_only=True)
     
     # 1. Base Metrics
     df = con.execute("SELECT * FROM player_metrics").df()
