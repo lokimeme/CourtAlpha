@@ -1,0 +1,7 @@
+nba_api
+duckdb
+pandas
+scikit-learn
+xgboost
+streamlit
+fpdf2
