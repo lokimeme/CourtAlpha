@@ -26,10 +26,16 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-DB_PATH = 'data/courtalpha.duckdb'
+import os
+
+DB_PATH = os.path.join(os.path.dirname(__file__), 'data/courtalpha.duckdb')
 
 @st.cache_data
 def load_data():
+    if not os.path.exists(DB_PATH):
+        st.error(f"Database not found at {DB_PATH}. Current files: {os.listdir(os.path.dirname(DB_PATH)) if os.path.exists(os.path.dirname(DB_PATH)) else 'data/ dir missing'}")
+        return pd.DataFrame()
+        
     con = duckdb.connect(DB_PATH, read_only=True)
     df = con.execute("SELECT * FROM player_metrics").df()
     try:
