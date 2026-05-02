@@ -33,16 +33,33 @@ DB_PATH = os.path.join(os.path.dirname(__file__), 'data/courtalpha.duckdb')
 @st.cache_data
 def load_data():
     if not os.path.exists(DB_PATH):
-        st.error(f"Database not found at {DB_PATH}. Current files: {os.listdir(os.path.dirname(DB_PATH)) if os.path.exists(os.path.dirname(DB_PATH)) else 'data/ dir missing'}")
+        st.error(f"Database not found at {DB_PATH}.")
         return pd.DataFrame()
         
     con = duckdb.connect(DB_PATH, read_only=True)
+    
+    # 1. Base Metrics
     df = con.execute("SELECT * FROM player_metrics").df()
+    
+    # 2. Robust Team Mapping
+    # Try player_teams (from nba_api) first, then deduplicated contracts
     try:
-        teams = con.execute("SELECT PLAYER_NAME, TEAM FROM contracts").df()
+        # Create a unified team mapping from all available sources
+        mapping_query = """
+            SELECT PLAYER_NAME, TEAM FROM (
+                SELECT PLAYER_NAME, TEAM, 1 as priority FROM player_teams
+                UNION ALL
+                SELECT PLAYER_NAME, TEAM, 2 as priority FROM contracts
+            ) 
+            QUALIFY ROW_NUMBER() OVER(PARTITION BY PLAYER_NAME ORDER BY priority ASC) = 1
+        """
+        teams = con.execute(mapping_query).df()
         df = df.merge(teams, on='PLAYER_NAME', how='left')
-    except:
+    except Exception as e:
+        # Fallback if tables don't exist yet
         df['TEAM'] = "Unknown"
+        
+    df['TEAM'] = df['TEAM'].fillna("Unknown")
     
     con.close()
     return df
@@ -78,17 +95,17 @@ else:
         with c1:
             st.subheader("Market Value Leaders")
             top_pillars = df.sort_values(by='MARKET_VALUE', ascending=False).head(10)
-            st.dataframe(top_pillars[['PLAYER_NAME', 'META_IMPACT', 'MARKET_VALUE', 'STRATEGIC_OUTLOOK']], use_container_width=True)
+            st.dataframe(top_pillars[['PLAYER_NAME', 'TEAM', 'META_IMPACT', 'MARKET_VALUE', 'STRATEGIC_OUTLOOK']], use_container_width=True)
             
         with c2:
             st.subheader("Efficiency Engines")
             top_surplus = df.sort_values(by='SURPLUS_VALUE', ascending=False).head(10)
-            st.dataframe(top_surplus[['PLAYER_NAME', 'SURPLUS_VALUE', 'STRATEGIC_OUTLOOK']], use_container_width=True)
+            st.dataframe(top_surplus[['PLAYER_NAME', 'TEAM', 'SURPLUS_VALUE', 'STRATEGIC_OUTLOOK']], use_container_width=True)
 
         with c3:
             st.subheader("Efficiency Risks")
             bottom_surplus = df.sort_values(by='SURPLUS_VALUE', ascending=True).head(10)
-            st.dataframe(bottom_surplus[['PLAYER_NAME', 'SURPLUS_VALUE', 'STRATEGIC_OUTLOOK']], use_container_width=True)
+            st.dataframe(bottom_surplus[['PLAYER_NAME', 'TEAM', 'SURPLUS_VALUE', 'STRATEGIC_OUTLOOK']], use_container_width=True)
 
     elif nav == "Player Intelligence":
         st.title("Player Intelligence Report")
