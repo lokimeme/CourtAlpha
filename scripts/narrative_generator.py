@@ -51,4 +51,4 @@ def generate_player_pdf(p_data):
         pdf.cell(50, 10, f"{m.replace('_', ' ')}:", border=0)
         pdf.cell(50, 10, f"{p_data[m]:.1%}", ln=True)
     
-    return pdf.output(dest='S')
+    return bytes(pdf.output())
