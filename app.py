@@ -91,21 +91,31 @@ nav = st.sidebar.radio("Navigation", ["Executive Summary", "Player Intelligence"
 
 df = load_data()
 
-def optimize_lineup(star_name, players_df):
+def optimize_lineup(star_name, players_df, strategy="Win Now"):
     star = players_df[players_df['PLAYER_NAME'] == star_name].iloc[0]
     others = players_df[players_df['PLAYER_NAME'] != star_name]
     
-    # 1. Initialize Lineup with Star in their slot
-    # Map raw positions to standard 5
+    # 1. Scoring logic based on strategy
+    if strategy == "Cap-Balanced":
+        # Combines impact with surplus (rewards high impact / low cost)
+        others = others.copy()
+        others['OPT_SCORE'] = others['META_IMPACT'] + (others['SURPLUS_VALUE'] / 20_000_000)
+    elif strategy == "Budget Build":
+        # Strictly prioritizes highest surplus (efficiency engines)
+        others = others.copy()
+        others['OPT_SCORE'] = others['SURPLUS_VALUE']
+    else:
+        # Default: Maximize raw impact
+        others = others.copy()
+        others['OPT_SCORE'] = others['META_IMPACT']
+
+    # 2. Initialize Lineup
     pos_map = {'PG': 0, 'SG': 1, 'SF': 2, 'PF': 3, 'C': 4}
     standard_pos = ['PG', 'SG', 'SF', 'PF', 'C']
-    
     lineup = [None] * 5
-    star_pos_idx = pos_map.get(star['POSITION'], 2) # SF default if unknown
+    star_pos_idx = pos_map.get(star['POSITION'], 2)
     lineup[star_pos_idx] = star
     
-    # 2. Strategic Fit Analysis
-    # We want complementary archetypes for the remaining slots
     roles = {
         "PG": ["Floor General", "High-Usage Slasher"],
         "SG": ["Movement Shooter", "3&D Wing"],
@@ -114,23 +124,20 @@ def optimize_lineup(star_name, players_df):
         "C": ["Elite Rim Protector", "Connector / High-IQ Big"]
     }
     
-    # 3. Fill remaining slots with highest Meta-Impact for that position
+    # 3. Fill remaining slots
     for i in range(5):
         if lineup[i] is not None: continue
         
         target_pos = standard_pos[i]
         possible = others[others['POSITION'] == target_pos]
-        
-        # Prefer specific archetypes for that position
         preferred = possible[possible['ARCHETYPE_NAME'].isin(roles[target_pos])]
         
         if not preferred.empty:
-            best_fit = preferred.sort_values(by='META_IMPACT', ascending=False).iloc[0]
+            best_fit = preferred.sort_values(by='OPT_SCORE', ascending=False).iloc[0]
         elif not possible.empty:
-            best_fit = possible.sort_values(by='META_IMPACT', ascending=False).iloc[0]
+            best_fit = possible.sort_values(by='OPT_SCORE', ascending=False).iloc[0]
         else:
-            # Emergency fallback: highest impact remaining player
-            best_fit = others.sort_values(by='META_IMPACT', ascending=False).iloc[0]
+            best_fit = others.sort_values(by='OPT_SCORE', ascending=False).iloc[0]
             
         lineup[i] = best_fit
         others = others[others['PLAYER_NAME'] != best_fit['PLAYER_NAME']]
@@ -252,16 +259,19 @@ else:
         st.title("Strategic Lineup Optimizer")
         st.info("Select a team and one of their top 3 impact players to build a complementary 5-man unit.")
         
-        # 1. Select Team
-        team_list = sorted(df[df['TEAM'] != 'Unknown']['TEAM'].unique())
-        selected_team = st.selectbox("Select Team", team_list)
+        c1, c2 = st.columns(2)
+        with c1:
+            team_list = sorted(df[df['TEAM'] != 'Unknown']['TEAM'].unique())
+            selected_team = st.selectbox("Select Team", team_list)
+        with c2:
+            opt_strategy = st.selectbox("Cap Strategy", ["Win Now", "Cap-Balanced", "Budget Build"], help="Win Now maximizes impact. Cap-Balanced finds efficient high-impact players. Budget Build prioritizes low-cost engines.")
         
         # 2. Select from Top 3 Stars (By PPG)
         team_stars = df[df['TEAM'] == selected_team].sort_values(by='PPG', ascending=False).head(3)
         star_player = st.selectbox("Select Star Player (The Anchor)", team_stars['PLAYER_NAME'].unique())
         
         if star_player:
-            rec_lineup = optimize_lineup(star_player, df)
+            rec_lineup = optimize_lineup(star_player, df, strategy=opt_strategy)
             
             st.subheader(f"Balanced Lineup built around {star_player}")
             
