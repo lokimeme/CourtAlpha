@@ -56,14 +56,46 @@ def load_data():
             QUALIFY ROW_NUMBER() OVER(PARTITION BY PLAYER_NAME ORDER BY priority DESC) = 1
         """
         meta = con.execute(mapping_query).df()
-        df = df.merge(meta, on='PLAYER_NAME', how='left')
+        # Ensure we don't have duplicate TEAM/POSITION columns before merging
+        cols_to_use = [c for c in meta.columns if c not in df.columns or c == 'PLAYER_NAME']
+        df = df.merge(meta[cols_to_use], on='PLAYER_NAME', how='left')
     except Exception as e:
-        df['TEAM'] = "Unknown"
-        df['POSITION'] = "N/A"
+        st.error(f"Mapping error: {e}")
+        if 'TEAM' not in df.columns: df['TEAM'] = "Unknown"
+        if 'POSITION' not in df.columns: df['POSITION'] = "N/A"
         
+    # 3. Spatial Intelligence (Spacing & Rim Gravity)
+    spatial_metrics = con.execute("""
+        SELECT 
+            PLAYER_NAME,
+            SUM(CASE WHEN (SQRT(BIN_X*BIN_X + BIN_Y*BIN_Y) < 80) THEN SHOT_COUNT ELSE 0 END)::FLOAT / SUM(SHOT_COUNT) as RIM_PRESSURE,
+            SUM(CASE WHEN (SQRT(BIN_X*BIN_X + BIN_Y*BIN_Y) > 230 OR (ABS(BIN_X) >= 220 AND BIN_Y <= 140)) THEN SHOT_COUNT ELSE 0 END)::FLOAT / SUM(SHOT_COUNT) as SPACING_RATING
+        FROM player_shot_density
+        GROUP BY PLAYER_NAME
+    """).df()
+    df = df.merge(spatial_metrics, on='PLAYER_NAME', how='left').fillna(0)
+    
     df['TEAM'] = df['TEAM'].fillna("Unknown")
     df['POSITION'] = df['POSITION'].fillna("N/A")
     df['PPG'] = df['PPG'].fillna(0.0)
+    
+    # 4. Positional Inference Fallback
+    def infer_position(row):
+        if row['POSITION'] != 'N/A':
+            return row['POSITION']
+        arch_map = {
+            "Elite Rim Protector": "C",
+            "3&D Wing": "SF",
+            "Movement Shooter": "SG",
+            "High-Usage Slasher": "SG",
+            "Connector / High-IQ Big": "PF",
+            "Point-of-Attack Defender": "PG",
+            "Floor General": "PG",
+            "Versatile Forward": "PF"
+        }
+        return arch_map.get(row['ARCHETYPE_NAME'], 'SF')
+    
+    df['INFERRED_POSITION'] = df.apply(infer_position, axis=1)
     
     con.close()
     return df
@@ -84,7 +116,7 @@ def load_shot_data(player_name):
     con.close()
     return shots
 
-st.sidebar.title("🏀 CourtAlpha v2.5")
+st.sidebar.title("CourtAlpha")
 st.sidebar.markdown("*Executive Intelligence Suite*")
 st.sidebar.markdown("---")
 nav = st.sidebar.radio("Navigation", ["Executive Summary", "Player Intelligence", "Lineup Optimizer", "Trade Simulator", "Economic Layer"])
@@ -93,27 +125,43 @@ df = load_data()
 
 def optimize_lineup(star_name, players_df, strategy="Win Now"):
     star = players_df[players_df['PLAYER_NAME'] == star_name].iloc[0]
-    others = players_df[players_df['PLAYER_NAME'] != star_name]
+    others = players_df[players_df['PLAYER_NAME'] != star_name].copy()
     
-    # 1. Scoring logic based on strategy
+    # 1. Base Scoring logic based on strategy
     if strategy == "Cap-Balanced":
-        # Combines impact with surplus (rewards high impact / low cost)
-        others = others.copy()
-        others['OPT_SCORE'] = others['META_IMPACT'] + (others['SURPLUS_VALUE'] / 20_000_000)
+        others['BASE_SCORE'] = others['META_IMPACT'] + (others['SURPLUS_VALUE'] / 20_000_000)
     elif strategy == "Budget Build":
-        # Strictly prioritizes highest surplus (efficiency engines)
-        others = others.copy()
-        others['OPT_SCORE'] = others['SURPLUS_VALUE']
+        others['BASE_SCORE'] = others['SURPLUS_VALUE'] / 1_000_000
     else:
-        # Default: Maximize raw impact
-        others = others.copy()
-        others['OPT_SCORE'] = others['META_IMPACT']
+        others['BASE_SCORE'] = others['META_IMPACT']
 
-    # 2. Initialize Lineup
+    # 2. Spatial Fit Logic
+    star_rim = star['RIM_PRESSURE']
+    star_space = star['SPACING_RATING']
+    
+    def calculate_fit(row):
+        fit_bonus = 0
+        # Complementary logic: Slashers need Spacers, Spacers need Rim Gravity
+        if star_rim > 0.4:
+            fit_bonus += row['SPACING_RATING'] * 8.0  # High priority on spacing
+        if star_space > 0.4:
+            fit_bonus += row['RIM_PRESSURE'] * 5.0   # High priority on rim pressure/gravity
+            
+        # Archetype Synergy
+        if star['ARCHETYPE_NAME'] == "Floor General" and row['ARCHETYPE_NAME'] in ["Movement Shooter", "Elite Rim Protector"]:
+            fit_bonus += 3.0
+        return fit_bonus
+
+    others['FIT_SCORE'] = others.apply(calculate_fit, axis=1)
+    others['OPT_SCORE'] = others['BASE_SCORE'] + others['FIT_SCORE']
+
+    # 3. Initialize Lineup
     pos_map = {'PG': 0, 'SG': 1, 'SF': 2, 'PF': 3, 'C': 4}
     standard_pos = ['PG', 'SG', 'SF', 'PF', 'C']
     lineup = [None] * 5
-    star_pos_idx = pos_map.get(star['POSITION'], 2)
+    
+    star_pos = star['INFERRED_POSITION']
+    star_pos_idx = pos_map.get(star_pos, 2)
     lineup[star_pos_idx] = star
     
     roles = {
@@ -124,12 +172,18 @@ def optimize_lineup(star_name, players_df, strategy="Win Now"):
         "C": ["Elite Rim Protector", "Connector / High-IQ Big"]
     }
     
-    # 3. Fill remaining slots
+    # 4. Fill remaining slots
     for i in range(5):
         if lineup[i] is not None: continue
         
         target_pos = standard_pos[i]
-        possible = others[others['POSITION'] == target_pos]
+        possible = others[others['INFERRED_POSITION'] == target_pos].copy()
+        
+        # Dynamic Spacing Check: If current lineup is clogged, prioritize spacers
+        current_spacing = sum([p['SPACING_RATING'] for p in lineup if p is not None])
+        if current_spacing < 0.8:
+            possible['OPT_SCORE'] += possible['SPACING_RATING'] * 12.0
+
         preferred = possible[possible['ARCHETYPE_NAME'].isin(roles[target_pos])]
         
         if not preferred.empty:
@@ -200,6 +254,11 @@ else:
             st.metric("Market Value", format_currency(p['MARKET_VALUE']))
             st.metric("Contract Cost", format_currency(p['CONTRACT_COST']))
             st.metric("Surplus Value", format_currency(p['SURPLUS_VALUE']), delta=format_currency(p['SURPLUS_VALUE']))
+            
+            st.markdown("---")
+            st.subheader("Spatial Profile")
+            st.progress(min(max(p['RIM_PRESSURE'], 0.0), 1.0), text=f"Rim Pressure: {p['RIM_PRESSURE']:.1%}")
+            st.progress(min(max(p['SPACING_RATING'], 0.0), 1.0), text=f"Spacing Rating: {p['SPACING_RATING']:.1%}")
             
             st.markdown("---")
             try:
@@ -295,8 +354,12 @@ else:
             c1, c2, c3 = st.columns(3)
             with c1:
                 st.metric("Total Lineup Meta-Impact", f"{total_unit_impact:.2f} Pts/100")
+                lineup_spacing = rec_lineup['SPACING_RATING'].mean()
+                st.metric("Lineup Spacing Index", f"{lineup_spacing:.2f}")
             with c2:
                 st.metric("Average Unit Age", f"{avg_age:.1f}")
+                lineup_rim = rec_lineup['RIM_PRESSURE'].mean()
+                st.metric("Lineup Rim Gravity", f"{lineup_rim:.2f}")
             with c3:
                 total_cost = rec_lineup['CONTRACT_COST'].sum()
                 st.metric("Total Unit Salary", format_currency(total_cost))
