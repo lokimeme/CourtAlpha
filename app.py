@@ -73,7 +73,11 @@ def load_data():
         FROM player_shot_density
         GROUP BY PLAYER_NAME
     """).df()
-    df = df.merge(spatial_metrics, on='PLAYER_NAME', how='left').fillna(0)
+    df = df.merge(spatial_metrics, on='PLAYER_NAME', how='left')
+    
+    # Fill spatial metrics specifically with 0, not the whole dataframe
+    df['RIM_PRESSURE'] = df['RIM_PRESSURE'].fillna(0)
+    df['SPACING_RATING'] = df['SPACING_RATING'].fillna(0)
     
     df['TEAM'] = df['TEAM'].fillna("Unknown")
     df['POSITION'] = df['POSITION'].fillna("N/A")
@@ -320,7 +324,7 @@ else:
         
         c1, c2 = st.columns(2)
         with c1:
-            team_list = sorted(df[df['TEAM'] != 'Unknown']['TEAM'].unique())
+            team_list = sorted([str(t) for t in df[df['TEAM'] != 'Unknown']['TEAM'].unique() if pd.notnull(t)])
             selected_team = st.selectbox("Select Team", team_list)
         with c2:
             opt_strategy = st.selectbox("Cap Strategy", ["Win Now", "Cap-Balanced", "Budget Build"], help="Win Now maximizes impact. Cap-Balanced finds efficient high-impact players. Budget Build prioritizes low-cost engines.")
