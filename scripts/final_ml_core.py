@@ -14,18 +14,19 @@ DB_PATH = 'data/courtalpha.duckdb'
 def run_final_ml_pipeline():
     con = duckdb.connect(DB_PATH)
     
-    logger.info("Phase 2.1: Calculating Efficiency Metrics & GP...")
+    CURRENT_SEASON = '2025-26'
+    logger.info(f"Phase 2.1: Filtering for active players in {CURRENT_SEASON}...")
     
-    # Calculate Games Played (GP) from play_by_play
-    gp_query = """
+    # Calculate Current Season Games Played (GP)
+    gp_query = f"""
         SELECT PLAYER_NAME, COUNT(DISTINCT GAME_ID) as GP
         FROM play_by_play
-        WHERE PLAYER_NAME IS NOT NULL
+        WHERE PLAYER_NAME IS NOT NULL AND SEASON = '{CURRENT_SEASON}'
         GROUP BY PLAYER_NAME
     """
     gp_df = con.execute(gp_query).df()
 
-    efficiency_query = """
+    efficiency_query = f"""
         SELECT 
             PLAYER_NAME,
             COUNT(*) as FGA,
@@ -37,16 +38,17 @@ def run_final_ml_pipeline():
         WHERE PLAYER_NAME IS NOT NULL
           AND ACTION_TYPE IN ('Made Shot', 'Missed Shot')
           AND PLAYER_NAME NOT LIKE '%Putback%'
+          AND SEASON = '{CURRENT_SEASON}'
         GROUP BY PLAYER_NAME
         HAVING COUNT(*) > 50
     """
     eff_df = con.execute(efficiency_query).df()
     
-    # Merge GP and filter by 10 games
+    # Merge GP and filter by 10 games in the CURRENT season
     eff_df = eff_df.merge(gp_df, on='PLAYER_NAME', how='inner')
     eff_df = eff_df[eff_df['GP'] >= 10]
 
-    logger.info("Phase 2.2: Integrating RAPM and Skill-DNA...")
+    logger.info(f"Integrating impact for {len(eff_df)} active players...")
     
     rapm_df = con.execute("SELECT PLAYER_NAME, ADJUSTED_IMPACT FROM player_metrics").df()
     
@@ -55,8 +57,8 @@ def run_final_ml_pipeline():
     lmbda = 500
     master_df['SHRUNK_IMPACT'] = master_df['ADJUSTED_IMPACT'] * (master_df['FGA'] / (master_df['FGA'] + lmbda))
 
-    logger.info("Phase 2.3: Skill-DNA Clustering...")
-    skill_DNA = con.execute("""
+    logger.info("Phase 2.3: Skill-DNA Clustering (using recent playstyle)...")
+    skill_DNA = con.execute(f"""
         SELECT 
             PLAYER_NAME,
             COUNT(*) FILTER (WHERE MICRO_ACTION = 'Logo Range')::FLOAT / COUNT(*) as LOGO_FREQ,
@@ -71,6 +73,7 @@ def run_final_ml_pipeline():
         WHERE PLAYER_NAME IS NOT NULL
           AND ACTION_TYPE IN ('Made Shot', 'Missed Shot')
           AND PLAYER_NAME NOT LIKE '%Putback%'
+          AND SEASON >= '2024-25'
         GROUP BY PLAYER_NAME
     """).df()
     
