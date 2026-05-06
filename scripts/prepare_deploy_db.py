@@ -32,6 +32,9 @@ def prepare_deploy_db():
         WHERE PLAYER_NAME IS NOT NULL 
           AND LOC_X IS NOT NULL
           AND ACTION_TYPE IN ('Made Shot', 'Missed Shot')
+          AND PLAYER_NAME NOT LIKE '%Putback%'
+          AND PLAYER_NAME NOT LIKE '%Reverse%'
+          AND PLAYER_NAME NOT LIKE '%Tip%'
         GROUP BY 1, 2, 3
     """
     src_conn.execute("CREATE TABLE tgt.player_shot_density AS " + density_query)

@@ -43,7 +43,12 @@ def load_data():
     con = duckdb.connect(str(db_path), read_only=True)
     
     # 1. Base Metrics
-    df = con.execute("SELECT * FROM player_metrics").df()
+    df = con.execute("""
+        SELECT * FROM player_metrics 
+        WHERE PLAYER_NAME NOT LIKE '%Putback%' 
+          AND PLAYER_NAME NOT LIKE '%Reverse%'
+          AND PLAYER_NAME NOT LIKE '%Tip%'
+    """).df()
     
     # 2. Robust Team & Position Mapping
     try:
