@@ -94,11 +94,11 @@ def load_data():
             return row['POSITION']
         arch_map = {
             "Rim Protector": "C",
-            "Post Specialist": "PF",
-            "Defensive Specialist": "SF",
-            "Two-Way Connector": "SF",
-            "Movement Shooter": "SG",
+            "Post Specialist": "C",
+            "Defensive Specialist": "C",
+            "Two-Way Connector": "PF",
             "Interior Finisher": "PF",
+            "Movement Shooter": "SG",
             "Self-Created Scorer": "SG",
             "Floor General": "PG"
         }
@@ -193,9 +193,9 @@ def optimize_lineup(star_name, players_df, strategy="Win Now"):
     roles = {
         "PG": ["Floor General", "Self-Created Scorer"],
         "SG": ["Movement Shooter", "Self-Created Scorer"],
-        "SF": ["Defensive Specialist", "Two-Way Connector"],
-        "PF": ["Post Specialist", "Interior Finisher"],
-        "C": ["Rim Protector", "Post Specialist"]
+        "SF": ["Two-Way Connector", "Movement Shooter"],
+        "PF": ["Interior Finisher", "Two-Way Connector"],
+        "C": ["Rim Protector", "Defensive Specialist", "Post Specialist"]
     }
     
     # 4. Fill remaining slots

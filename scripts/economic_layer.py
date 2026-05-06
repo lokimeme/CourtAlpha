@@ -93,6 +93,7 @@ def run_economic_pipeline():
             m.ARCHETYPE_NAME,
             m.FGA,
             m.GP,
+            m.PPG,
             meta.BIRTHDATE,
             date_diff('year', CAST(meta.BIRTHDATE AS DATE), current_date) as CALC_AGE,
             c.SALARY as RAW_COST
@@ -117,9 +118,8 @@ def run_economic_pipeline():
         market_val = calculate_market_value(meta_impact, 0.95, age)
         surplus = market_val - cost
         
-        # Simple PPG estimate for UI
-        ppg = (row['FGA'] * 1.1) / max(row['GP'], 1) 
-        
+        # Use calculated PPG from player_metrics
+        ppg = row['PPG'] if not pd.isnull(row['PPG']) else 0.0
         flags = ""
         if age >= 35: flags += " 📉 Age Risk"
         elif age <= 22: flags += " 📈 Upside"
