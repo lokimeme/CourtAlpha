@@ -44,9 +44,9 @@ def run_final_ml_pipeline():
     """
     eff_df = con.execute(efficiency_query).df()
     
-    # Merge GP and filter by 10 games in the CURRENT season
+    # Merge GP and filter by 20 games in the CURRENT season and 100 FGA
     eff_df = eff_df.merge(gp_df, on='PLAYER_NAME', how='inner')
-    eff_df = eff_df[eff_df['GP'] >= 10]
+    eff_df = eff_df[(eff_df['GP'] >= 20) & (eff_df['FGA'] >= 100)]
 
     logger.info(f"Integrating impact for {len(eff_df)} active players...")
     

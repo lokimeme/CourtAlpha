@@ -195,6 +195,10 @@ def optimize_lineup(star_name, players_df, strategy="Win Now"):
 
         preferred = possible[possible['ARCHETYPE_NAME'].isin(roles[target_pos])]
         
+        # Variety Logic: Add tiny random noise to break ties and rotate similar fits
+        noise = np.random.normal(0, 0.05, size=len(possible))
+        possible['OPT_SCORE'] += noise
+
         if not preferred.empty:
             best_fit = preferred.sort_values(by='OPT_SCORE', ascending=False).iloc[0]
         elif not possible.empty:
