@@ -14,8 +14,17 @@ DB_PATH = 'data/courtalpha.duckdb'
 def run_final_ml_pipeline():
     con = duckdb.connect(DB_PATH)
     
-    logger.info("Phase 2.1: Calculating Efficiency Metrics (eFG% vs xEFG%)...")
+    logger.info("Phase 2.1: Calculating Efficiency Metrics & GP...")
     
+    # Calculate Games Played (GP) from play_by_play
+    gp_query = """
+        SELECT PLAYER_NAME, COUNT(DISTINCT GAME_ID) as GP
+        FROM play_by_play
+        WHERE PLAYER_NAME IS NOT NULL
+        GROUP BY PLAYER_NAME
+    """
+    gp_df = con.execute(gp_query).df()
+
     efficiency_query = """
         SELECT 
             PLAYER_NAME,
@@ -27,10 +36,15 @@ def run_final_ml_pipeline():
         FROM play_by_play
         WHERE PLAYER_NAME IS NOT NULL
           AND ACTION_TYPE IN ('Made Shot', 'Missed Shot')
+          AND PLAYER_NAME NOT LIKE '%Putback%'
         GROUP BY PLAYER_NAME
-        HAVING COUNT(*) > 20
+        HAVING COUNT(*) > 50
     """
     eff_df = con.execute(efficiency_query).df()
+    
+    # Merge GP and filter by 10 games
+    eff_df = eff_df.merge(gp_df, on='PLAYER_NAME', how='inner')
+    eff_df = eff_df[eff_df['GP'] >= 10]
 
     logger.info("Phase 2.2: Integrating RAPM and Skill-DNA...")
     
@@ -56,29 +70,32 @@ def run_final_ml_pipeline():
         FROM play_by_play
         WHERE PLAYER_NAME IS NOT NULL
           AND ACTION_TYPE IN ('Made Shot', 'Missed Shot')
+          AND PLAYER_NAME NOT LIKE '%Putback%'
         GROUP BY PLAYER_NAME
     """).df()
     
     cluster_df = master_df.merge(skill_DNA, on='PLAYER_NAME', how='inner')
     
-    feature_cols = [c for c in cluster_df.columns if 'FREQ' in c] + ['SHRUNK_IMPACT', 'X_EFG_PCT']
+    # Archetype features should be style-based, NOT impact-based to avoid bias
+    feature_cols = [c for c in cluster_df.columns if 'FREQ' in c]
     features = cluster_df[feature_cols].fillna(0)
     
     scaler = StandardScaler()
     scaled_features = scaler.fit_transform(features)
     
+    # Refined Archetypes mapping based on centroid dominance
     archetypes = {
-        0: "Elite Rim Protector",
-        1: "3&D Wing",
-        2: "Movement Shooter",
-        3: "High-Usage Slasher",
-        4: "Connector / High-IQ Big",
-        5: "Point-of-Attack Defender",
-        6: "Floor General",
-        7: "Versatile Forward"
+        0: "Self-Created Scorer", # High Isolation
+        1: "Two-Way Connector",   # High Rim Prot, moderate everything
+        2: "Interior Finisher",   # High Floater / Rim Freq
+        3: "Defensive Specialist", # Low offense, High Rim Prot
+        4: "Movement Shooter",    # High Spot-up
+        5: "Post Specialist",     # High Post freq
+        6: "Floor General",       # High Logo / Creation
+        7: "Rim Protector"        # High Rim Prot, Low Spotup
     }
     
-    kmeans = KMeans(n_clusters=8, random_state=42, n_init=10)
+    kmeans = KMeans(n_clusters=8, random_state=42, n_init=20)
     cluster_df['ARCHETYPE_ID'] = kmeans.fit_predict(scaled_features)
     cluster_df['ARCHETYPE_NAME'] = cluster_df['ARCHETYPE_ID'].map(archetypes)
 
@@ -89,6 +106,7 @@ def run_final_ml_pipeline():
         CREATE TABLE player_metrics (
             PLAYER_NAME VARCHAR PRIMARY KEY,
             FGA INTEGER,
+            GP INTEGER,
             EFG_PCT FLOAT,
             X_EFG_PCT FLOAT,
             ADJUSTED_IMPACT FLOAT,
@@ -107,7 +125,7 @@ def run_final_ml_pipeline():
     con.execute("""
         INSERT INTO player_metrics 
         SELECT 
-            PLAYER_NAME, FGA, EFG_PCT, X_EFG_PCT, ADJUSTED_IMPACT, SHRUNK_IMPACT, ARCHETYPE_NAME,
+            PLAYER_NAME, FGA, GP, EFG_PCT, X_EFG_PCT, ADJUSTED_IMPACT, SHRUNK_IMPACT, ARCHETYPE_NAME,
             LOGO_FREQ, FLOATER_FREQ, POST_FREQ, SPOTUP_FREQ, ISOLATION_FREQ, RIM_PROT_FREQ
         FROM final_data
     """)

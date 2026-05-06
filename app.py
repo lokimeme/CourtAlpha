@@ -88,14 +88,14 @@ def load_data():
         if row['POSITION'] != 'N/A':
             return row['POSITION']
         arch_map = {
-            "Elite Rim Protector": "C",
-            "3&D Wing": "SF",
+            "Rim Protector": "C",
+            "Post Specialist": "PF",
+            "Defensive Specialist": "SF",
+            "Two-Way Connector": "SF",
             "Movement Shooter": "SG",
-            "High-Usage Slasher": "SG",
-            "Connector / High-IQ Big": "PF",
-            "Point-of-Attack Defender": "PG",
-            "Floor General": "PG",
-            "Versatile Forward": "PF"
+            "Interior Finisher": "PF",
+            "Self-Created Scorer": "SG",
+            "Floor General": "PG"
         }
         return arch_map.get(row['ARCHETYPE_NAME'], 'SF')
     
@@ -169,11 +169,11 @@ def optimize_lineup(star_name, players_df, strategy="Win Now"):
     lineup[star_pos_idx] = star
     
     roles = {
-        "PG": ["Floor General", "High-Usage Slasher"],
-        "SG": ["Movement Shooter", "3&D Wing"],
-        "SF": ["3&D Wing", "Versatile Forward"],
-        "PF": ["Versatile Forward", "Connector / High-IQ Big"],
-        "C": ["Elite Rim Protector", "Connector / High-IQ Big"]
+        "PG": ["Floor General", "Self-Created Scorer"],
+        "SG": ["Movement Shooter", "Self-Created Scorer"],
+        "SF": ["Defensive Specialist", "Two-Way Connector"],
+        "PF": ["Post Specialist", "Interior Finisher"],
+        "C": ["Rim Protector", "Post Specialist"]
     }
     
     # 4. Fill remaining slots

@@ -64,19 +64,41 @@ def run_economic_pipeline():
     Integrates contract, age, and Meta-Impact data for market projections.
     Includes Phase 3 Strategic Valuation Layer (Pillar vs. Engine).
     """
-    logger.info("Starting Meta-Adjusted Economic Layer (v2.5)...")
+    logger.info("Starting Meta-Adjusted Economic Layer (v2.6)...")
     con = duckdb.connect(DB_PATH)
     
+    # 1. Ensure schema is ready for economic metrics
+    logger.info("Hardening player_metrics schema for financial data...")
+    cols_to_add = [
+        ('MARKET_VALUE', 'FLOAT'),
+        ('SURPLUS_VALUE', 'FLOAT'),
+        ('FLAGS', 'VARCHAR'),
+        ('AGE', 'INTEGER'),
+        ('STRATEGIC_OUTLOOK', 'VARCHAR'),
+        ('META_IMPACT', 'FLOAT'),
+        ('PPG', 'FLOAT'),
+        ('CONTRACT_COST', 'FLOAT')
+    ]
+    
+    existing_cols = [c[1] for c in con.execute("PRAGMA table_info(player_metrics)").fetchall()]
+    for col, ctype in cols_to_add:
+        if col not in existing_cols:
+            con.execute(f"ALTER TABLE player_metrics ADD COLUMN {col} {ctype}")
+
+    # 2. Fetch Base Data
     query = """
         SELECT 
             m.PLAYER_NAME,
-            m.META_IMPACT,
-            m.CONTRACT_COST,
+            m.SHRUNK_IMPACT,
             m.ARCHETYPE_NAME,
+            m.FGA,
+            m.GP,
             meta.BIRTHDATE,
-            date_diff('year', CAST(meta.BIRTHDATE AS DATE), current_date) as CALC_AGE
+            date_diff('year', CAST(meta.BIRTHDATE AS DATE), current_date) as CALC_AGE,
+            c.SALARY as RAW_COST
         FROM player_metrics m
         LEFT JOIN player_metadata meta ON m.PLAYER_NAME = meta.PLAYER_NAME
+        LEFT JOIN contracts c ON m.PLAYER_NAME = c.PLAYER_NAME
     """
     df = con.execute(query).df()
     
@@ -87,12 +109,16 @@ def run_economic_pipeline():
     for idx, row in df.iterrows():
         p_name = row['PLAYER_NAME']
         age = row['CALC_AGE'] if not pd.isnull(row['CALC_AGE']) else 27 
-        cost = row['CONTRACT_COST'] if row['CONTRACT_COST'] > 0 else 1121428
+        cost = row['RAW_COST'] if not pd.isnull(row['RAW_COST']) and row['RAW_COST'] > 0 else 1121428
         arch = row['ARCHETYPE_NAME']
         
-        meta_impact = row['META_IMPACT'] if not pd.isnull(row['META_IMPACT']) else 0.0
+        # Meta-Impact derived from Shrunk impact (Pts/100 scale)
+        meta_impact = float(row['SHRUNK_IMPACT'] * 100)
         market_val = calculate_market_value(meta_impact, 0.95, age)
         surplus = market_val - cost
+        
+        # Simple PPG estimate for UI
+        ppg = (row['FGA'] * 1.1) / max(row['GP'], 1) 
         
         flags = ""
         if age >= 35: flags += " 📉 Age Risk"
@@ -116,10 +142,6 @@ def run_economic_pipeline():
         elif cost > 35000000 and meta_impact < 0:
             outlook = "Negative Asset"
             flags += " ⚠️ Toxic Contract"
-        
-        elif meta_impact < -1.0:
-            outlook = "Replacement Candidate"
-            flags += " ❌ Replacement"
 
         if surplus > 15000000: 
             if "Engine" not in flags: flags += " 💎 Elite Surplus"
@@ -132,9 +154,12 @@ def run_economic_pipeline():
                 SURPLUS_VALUE = ?,
                 FLAGS = ?,
                 AGE = ?,
-                STRATEGIC_OUTLOOK = ?
+                STRATEGIC_OUTLOOK = ?,
+                META_IMPACT = ?,
+                PPG = ?,
+                CONTRACT_COST = ?
             WHERE PLAYER_NAME = ?
-        """, (float(market_val), float(surplus), flags, int(age), outlook, p_name))
+        """, (float(market_val), float(surplus), flags, int(age), outlook, meta_impact, float(ppg), float(cost), p_name))
 
     con.close()
     logger.info("Meta-Economic processing complete with Strategic Layer.")
