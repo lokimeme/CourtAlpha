@@ -150,15 +150,32 @@ def optimize_lineup(star_name, players_df, strategy="Win Now"):
     
     def calculate_fit(row):
         fit_bonus = 0
-        # Complementary logic: Slashers need Spacers, Spacers need Rim Gravity
+        # 1. Spatial Complementarity
         if star_rim > 0.4:
-            fit_bonus += row['SPACING_RATING'] * 8.0  # High priority on spacing
+            fit_bonus += row['SPACING_RATING'] * 12.0  # Slashers prioritize floor spacers
         if star_space > 0.4:
-            fit_bonus += row['RIM_PRESSURE'] * 5.0   # High priority on rim pressure/gravity
+            fit_bonus += row['RIM_PRESSURE'] * 8.0    # Spacers prioritize interior threats
             
-        # Archetype Synergy
-        if star['ARCHETYPE_NAME'] == "Floor General" and row['ARCHETYPE_NAME'] in ["Movement Shooter", "Elite Rim Protector"]:
-            fit_bonus += 3.0
+        # 2. Archetype Synergy
+        s_arch = star['ARCHETYPE_NAME']
+        r_arch = row['ARCHETYPE_NAME']
+        
+        if s_arch == "Floor General":
+            if r_arch in ["Interior Finisher", "Rim Protector"]: fit_bonus += 5.0 # Roll threats
+            if r_arch == "Movement Shooter": fit_bonus += 4.0 # Kick-out targets
+            
+        elif s_arch == "Two-Way Connector": # Jalen Johnson
+            if r_arch == "Self-Created Scorer": fit_bonus += 6.0 # Needs a primary engine to connect
+            if r_arch == "Rim Protector": fit_bonus += 4.0 # Support behind his versatility
+            
+        elif s_arch == "Interior Finisher": # Kuminga
+            if r_arch == "Floor General": fit_bonus += 7.0 # Needs a creator to find him
+            if r_arch == "Defensive Specialist": fit_bonus += 3.0 # Wing defense support
+            
+        elif s_arch == "Self-Created Scorer": # Wemby / Luka
+            if r_arch in ["Defensive Specialist", "Two-Way Connector"]: fit_bonus += 5.0 # Defensive glue
+            if r_arch == "Movement Shooter": fit_bonus += 3.0 # Space
+            
         return fit_bonus
 
     others['FIT_SCORE'] = others.apply(calculate_fit, axis=1)
@@ -190,13 +207,14 @@ def optimize_lineup(star_name, players_df, strategy="Win Now"):
         
         # Dynamic Spacing Check: If current lineup is clogged, prioritize spacers
         current_spacing = sum([p['SPACING_RATING'] for p in lineup if p is not None])
-        if current_spacing < 0.8:
-            possible['OPT_SCORE'] += possible['SPACING_RATING'] * 12.0
+        if current_spacing < 0.6: # Relaxed slightly for more variety
+            possible['OPT_SCORE'] += possible['SPACING_RATING'] * 15.0
 
         preferred = possible[possible['ARCHETYPE_NAME'].isin(roles[target_pos])]
         
-        # Variety Logic: Add tiny random noise to break ties and rotate similar fits
-        noise = np.random.normal(0, 0.05, size=len(possible))
+        # Variety Logic: Add significant random noise to break ties and rotate similar fits
+        # Using a wider scale (0.5 pts) to ensure different outcomes on refresh
+        noise = np.random.normal(0, 0.5, size=len(possible))
         possible['OPT_SCORE'] += noise
 
         if not preferred.empty:
