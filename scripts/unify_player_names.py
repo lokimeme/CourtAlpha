@@ -12,12 +12,30 @@ DB_PATH = 'data/courtalpha.duckdb'
 def normalize_name(name):
     if not name: return ""
     name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii')
-    name = re.sub(r'\s+(Jr\.|III|II|IV|Sr\.)$', '', name)
+    # Preserve suffixes but strip edges
     return name.strip()
 
 def unify_player_names():
     con = duckdb.connect(DB_PATH)
     logger.info("Starting Player Name Unification...")
+
+    # Manual Overrides for common abbreviations in PBP
+    manual_overrides = {
+        'St. Curry': 'Stephen Curry',
+        'Se. Curry': 'Seth Curry',
+        'L. Doncic': 'Luka Doncic',
+        'Le. James': 'LeBron James',
+        'K. Durant': 'Kevin Durant',
+        'J. Embiid': 'Joel Embiid',
+        'G. Antetokounmpo': 'Giannis Antetokounmpo',
+        'S. Gilgeous-Alexander': 'Shai Gilgeous-Alexander',
+        'Ja. Williams': 'Jalen Williams',
+        'Jal. Williams': 'Jalen Williams',
+        'Jay. Williams': 'Jaylin Williams',
+        'M. Porter Jr.': 'Michael Porter Jr.',
+        'K. Towns': 'Karl-Anthony Towns',
+        'D. Sabonis': 'Domantas Sabonis'
+    }
 
     meta_df = con.execute("SELECT PLAYER_NAME FROM player_metadata").df()
     meta_names = meta_df['PLAYER_NAME'].tolist()
@@ -39,12 +57,18 @@ def unify_player_names():
                 last_name_buckets[last_name] = []
             last_name_buckets[last_name].append(full_name)
 
-    metrics_players = con.execute("SELECT PLAYER_NAME FROM player_metrics").df()['PLAYER_NAME'].tolist()
+    # We pull from play_by_play directly to fix the source
+    raw_players = con.execute("SELECT DISTINCT PLAYER_NAME FROM play_by_play WHERE PLAYER_NAME IS NOT NULL").df()['PLAYER_NAME'].tolist()
     
     updates = []
     success_count = 0
     
-    for p in metrics_players:
+    for p in raw_players:
+        if p in manual_overrides:
+            updates.append((manual_overrides[p], p))
+            success_count += 1
+            continue
+
         norm_p = normalize_name(p)
         
         if norm_p in match_map:
@@ -62,7 +86,7 @@ def unify_player_names():
             continue
 
     if updates:
-        logger.info(f"Applying {len(updates)} name unifications...")
+        logger.info(f"Applying {len(updates)} name unifications to source tables...")
         up_df = pd.DataFrame(updates, columns=['NEW', 'OLD'])
         con.register('temp_unify', up_df)
         
@@ -73,37 +97,6 @@ def unify_player_names():
             FROM temp_unify
             WHERE play_by_play.PLAYER_NAME = temp_unify.OLD
         """)
-
-        logger.info("Merging player_metrics...")
-        con.execute("""
-            CREATE TABLE player_metrics_new AS
-            SELECT 
-                COALESCE(u.NEW, m.PLAYER_NAME) as PLAYER_NAME,
-                SUM(FGA) as FGA,
-                AVG(EFG_PCT) as EFG_PCT,
-                AVG(X_EFG_PCT) as X_EFG_PCT,
-                AVG(ADJUSTED_IMPACT) as ADJUSTED_IMPACT,
-                AVG(SHRUNK_IMPACT) as SHRUNK_IMPACT,
-                MAX(ARCHETYPE_NAME) as ARCHETYPE_NAME,
-                MAX(LOGO_FREQ) as LOGO_FREQ,
-                MAX(FLOATER_FREQ) as FLOATER_FREQ,
-                MAX(POST_FREQ) as POST_FREQ,
-                MAX(SPOTUP_FREQ) as SPOTUP_FREQ,
-                MAX(ISOLATION_FREQ) as ISOLATION_FREQ,
-                MAX(RIM_PROT_FREQ) as RIM_PROT_FREQ,
-                MAX(CONTRACT_COST) as CONTRACT_COST,
-                MAX(MARKET_VALUE) as MARKET_VALUE,
-                MAX(SURPLUS_VALUE) as SURPLUS_VALUE,
-                MAX(FLAGS) as FLAGS,
-                MAX(AGE) as AGE
-            FROM player_metrics m
-            LEFT JOIN temp_unify u ON m.PLAYER_NAME = u.OLD
-            GROUP BY 1
-        """)
-        
-        con.execute("DROP TABLE player_metrics")
-        con.execute("ALTER TABLE player_metrics_new RENAME TO player_metrics")
-        
         con.unregister('temp_unify')
     
     con.close()
