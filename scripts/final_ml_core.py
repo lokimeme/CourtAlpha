@@ -56,7 +56,8 @@ def run_final_ml_pipeline():
 
     logger.info(f"Integrating impact for {len(eff_df)} active players...")
     
-    rapm_df = con.execute("SELECT PLAYER_NAME, ADJUSTED_IMPACT FROM player_metrics").df()
+    # NEW: Pull from standalone player_impact table
+    rapm_df = con.execute("SELECT PLAYER_NAME, ADJUSTED_IMPACT FROM player_impact").df()
     
     master_df = eff_df.merge(rapm_df, on='PLAYER_NAME', how='left').fillna(0)
     

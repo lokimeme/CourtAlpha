@@ -75,21 +75,16 @@ def train_advanced_impact():
 
     impact_df = pd.DataFrame({
         'PLAYER_NAME': all_players,
-        'ADJUSTED_SURPLUS_IMPACT': model.coef_
+        'ADJUSTED_IMPACT': model.coef_
     })
+    impact_df = impact_df.dropna(subset=['PLAYER_NAME'])
 
-    logger.info("Updating player_metrics with Adjusted Impact...")
-    try:
-        con.execute("ALTER TABLE player_metrics ADD COLUMN ADJUSTED_IMPACT FLOAT")
-    except: pass
-
+    logger.info("Saving results to player_impact table...")
+    con.execute("DROP TABLE IF EXISTS player_impact")
+    con.execute("CREATE TABLE player_impact (PLAYER_NAME VARCHAR PRIMARY KEY, ADJUSTED_IMPACT FLOAT)")
+    
     con.register('temp_impact', impact_df)
-    con.execute("""
-        UPDATE player_metrics
-        SET ADJUSTED_IMPACT = temp_impact.ADJUSTED_SURPLUS_IMPACT
-        FROM temp_impact
-        WHERE player_metrics.PLAYER_NAME = temp_impact.PLAYER_NAME
-    """)
+    con.execute("INSERT INTO player_impact SELECT PLAYER_NAME, ADJUSTED_IMPACT FROM temp_impact")
     
     con.unregister('temp_impact')
     con.close()
