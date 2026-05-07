@@ -153,13 +153,25 @@ def unify_player_names():
         up_df = pd.DataFrame(updates, columns=['NEW', 'OLD'])
         con.register('temp_unify', up_df)
         
-        logger.info("Updating play_by_play table...")
+        logger.info("Updating play_by_play table (main column)...")
         con.execute("""
             UPDATE play_by_play
             SET PLAYER_NAME = temp_unify.NEW
             FROM temp_unify
             WHERE play_by_play.PLAYER_NAME = temp_unify.OLD
         """)
+
+        # NEW: Update all lineup columns to ensure consistent RAPM training
+        lineup_cols = [f"OFF_{i}" for i in range(1, 6)] + [f"DEF_{i}" for i in range(1, 6)]
+        for col in lineup_cols:
+            logger.info(f"  Updating {col}...")
+            con.execute(f"""
+                UPDATE play_by_play
+                SET {col} = temp_unify.NEW
+                FROM temp_unify
+                WHERE play_by_play.{col} = temp_unify.OLD
+            """)
+
         con.unregister('temp_unify')
     
     con.close()
