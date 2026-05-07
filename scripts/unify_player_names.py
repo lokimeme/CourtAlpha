@@ -38,12 +38,60 @@ def unify_player_names():
     }
 
     meta_df = con.execute("SELECT PLAYER_NAME FROM player_metadata").df()
-    meta_names = meta_df['PLAYER_NAME'].tolist()
+    contract_df = con.execute("SELECT PLAYER_NAME FROM contracts").df()
+    
+    meta_names = list(set(meta_df['PLAYER_NAME'].tolist() + contract_df['PLAYER_NAME'].tolist()))
     
     match_map = {}
     last_name_buckets = {}
     
+    # Absolute Star Disambiguation (When only last name is scraped)
+    star_disambiguation = {
+        'Curry': 'Stephen Curry',
+        'James': 'LeBron James',
+        'Durant': 'Kevin Durant',
+        'Doncic': 'Luka Doncic',
+        'Embiid': 'Joel Embiid',
+        'Antetokounmpo': 'Giannis Antetokounmpo',
+        'Jokic': 'Nikola Jokic',
+        'Tatum': 'Jayson Tatum',
+        'Booker': 'Devin Booker',
+        'Lillard': 'Damian Lillard',
+        'Mitchell': 'Donovan Mitchell',
+        'Brunson': 'Jalen Brunson',
+        'Morant': 'Ja Morant',
+        'Wembanyama': 'Victor Wembanyama',
+        'Gilgeous-Alexander': 'Shai Gilgeous-Alexander',
+        'Adebayo': 'Bam Adebayo',
+        'Banchero': 'Paolo Banchero',
+        'Haliburton': 'Tyrese Haliburton',
+        'Maxey': 'Tyrese Maxey',
+        'Fox': 'De\'Aaron Fox',
+        'Sabonis': 'Domantas Sabonis',
+        'Gobert': 'Rudy Gobert',
+        'Porzingis': 'Kristaps Porzingis',
+        'Siakam': 'Pascal Siakam',
+        'Bridges': 'Mikal Bridges',
+        'Towns': 'Karl-Anthony Towns',
+        'Leonard': 'Kawhi Leonard',
+        'Harden': 'James Harden',
+        'George': 'Paul George',
+        'Davis': 'Anthony Davis',
+        'Edwards': 'Anthony Edwards',
+        'Butler': 'Jimmy Butler',
+        'DeRozan': 'DeMar DeRozan',
+        'LaVine': 'Zach LaVine',
+        'Williamson': 'Zion Williamson',
+        'Ingram': 'Brandon Ingram',
+        'McCollum': 'CJ McCollum',
+        'Barnes': 'Scottie Barnes',
+        'Mobley': 'Evan Mobley',
+        'Allen': 'Jarrett Allen',
+        'Duren': 'Jalen Duren'
+    }
+    
     for full_name in meta_names:
+        if not full_name: continue
         norm_full = normalize_name(full_name)
         match_map[norm_full] = full_name
         
@@ -55,7 +103,8 @@ def unify_player_names():
             last_name = parts[-1]
             if last_name not in last_name_buckets:
                 last_name_buckets[last_name] = []
-            last_name_buckets[last_name].append(full_name)
+            if full_name not in last_name_buckets[last_name]:
+                last_name_buckets[last_name].append(full_name)
 
     # We pull from play_by_play directly to fix the source
     raw_players = con.execute("SELECT DISTINCT PLAYER_NAME FROM play_by_play WHERE PLAYER_NAME IS NOT NULL").df()['PLAYER_NAME'].tolist()
@@ -66,6 +115,11 @@ def unify_player_names():
     for p in raw_players:
         if p in manual_overrides:
             updates.append((manual_overrides[p], p))
+            success_count += 1
+            continue
+            
+        if p in star_disambiguation:
+            updates.append((star_disambiguation[p], p))
             success_count += 1
             continue
 
