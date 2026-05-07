@@ -104,54 +104,11 @@ def fix_everything():
             con.execute(f"UPDATE play_by_play SET {col} = ? WHERE {col} = ?", [new, old])
 
     # 2. Perfect Roster Alignment
-    logger.info("Restoring team assignments...")
-    con.execute("DROP TABLE IF EXISTS player_teams")
-    con.execute("CREATE TABLE player_teams (PLAYER_NAME VARCHAR PRIMARY KEY, TEAM VARCHAR)")
+    logger.info("Aligning names in player_teams...")
     
-    # We use a combined approach: Manual overrides for stars + Sync Full Roster for the rest
-    real_rosters = [
-        ('Luka Doncic', 'DAL'), ('Kyrie Irving', 'DAL'), ('Klay Thompson', 'DAL'),
-        ('Stephen Curry', 'GSW'), ('Draymond Green', 'GSW'), ('Jonathan Kuminga', 'GSW'),
-        ('LeBron James', 'LAL'), ('Anthony Davis', 'LAL'), ('Austin Reaves', 'LAL'),
-        ('Joel Embiid', 'PHI'), ('Tyrese Maxey', 'PHI'), ('Paul George', 'PHI'),
-        ('Shai Gilgeous-Alexander', 'OKC'), ('Chet Holmgren', 'OKC'), ('Jalen Williams', 'OKC'),
-        ('Nikola Jokic', 'DEN'), ('Jamal Murray', 'DEN'), ('Aaron Gordon', 'DEN'),
-        ('Giannis Antetokounmpo', 'MIL'), ('Damian Lillard', 'MIL'), ('Brook Lopez', 'MIL'),
-        ('Jayson Tatum', 'BOS'), ('Jaylen Brown', 'BOS'), ('Kristaps Porzingis', 'BOS'),
-        ('Kevin Durant', 'PHX'), ('Devin Booker', 'PHX'), ('Bradley Beal', 'PHX'),
-        ('Tyrese Haliburton', 'IND'), ('Pascal Siakam', 'IND'), ('Myles Turner', 'IND'),
-        ('Anthony Edwards', 'MIN'), ('Rudy Gobert', 'MIN'), ('Karl-Anthony Towns', 'NYK'),
-        ('Jalen Brunson', 'NYK'), ('OG Anunoby', 'NYK'), ('Mikal Bridges', 'NYK'),
-        ('Victor Wembanyama', 'SAS'), ('Chris Paul', 'SAS'), ('Jeremy Sochan', 'SAS'),
-        ('Ja Morant', 'MEM'), ('Desmond Bane', 'MEM'), ('Jaren Jackson Jr.', 'MEM'),
-        ('Zion Williamson', 'NOP'), ('Brandon Ingram', 'NOP'), ('CJ McCollum', 'NOP'),
-        ('Paolo Banchero', 'ORL'), ('Franz Wagner', 'ORL'), ('Jalen Suggs', 'ORL'),
-        ('Cade Cunningham', 'DET'), ('Jaden Ivey', 'DET'), ('Jalen Duren', 'DET'), ('Tobias Harris', 'DET'),
-        ('Trae Young', 'ATL'), ('Jalen Johnson', 'ATL'), ('Clint Capela', 'ATL'),
-        ('Scottie Barnes', 'TOR'), ('RJ Barrett', 'TOR'), ('Immanuel Quickley', 'TOR'),
-        ('Lauri Markkanen', 'UTA'), ('Collin Sexton', 'UTA'), ('Walker Kessler', 'UTA'),
-        ('Jimmy Butler', 'MIA'), ('Bam Adebayo', 'MIA'), ('Tyler Herro', 'MIA'),
-        ('Kawhi Leonard', 'LAC'), ('James Harden', 'LAC'), ('Ivica Zubac', 'LAC'),
-        ('Donovan Mitchell', 'CLE'), ('Evan Mobley', 'CLE'), ('Jarrett Allen', 'CLE'),
-        ('Tim Hardaway Jr.', 'DET'), ('Seth Curry', 'CHA'), ('Coby White', 'CHI'),
-        ('De\'Aaron Fox', 'SAC'), ('Domantas Sabonis', 'SAC'), ('DeMar DeRozan', 'SAC'),
-        ('Nikola Vucevic', 'CHI'), ('Saddiq Bey', 'WAS'), ('Brandon Miller', 'CHA'),
-        ('Shaedon Sharpe', 'POR'), ('Keegan Murray', 'SAC'), ('Jabari Smith Jr.', 'HOU'),
-        ('Amen Thompson', 'HOU'), ('Jalen Green', 'HOU'), ('Alperen Sengun', 'HOU'),
-        ('Fred VanVleet', 'HOU'), ('Miles Bridges', 'CHA'), ('LaMelo Ball', 'CHA'),
-        ('Cam Thomas', 'BKN'), ('Nic Claxton', 'BKN'), ('Dennis Schroder', 'BKN'),
-        ('Kyle Kuzma', 'WAS'), ('Jordan Poole', 'WAS'), ('Alex Sarr', 'WAS'),
-        ('Josh Giddey', 'CHI'), ('Zach LaVine', 'CHI'), ('Dyson Daniels', 'ATL'),
-        ('Derrick White', 'BOS'), ('Jrue Holiday', 'BOS'), ('Norman Powell', 'LAC'),
-        ('Terry Rozier', 'MIA'), ('Keyonte George', 'UTA'), ('Bilal Coulibaly', 'WAS')
-    ]
-    
-    con.executemany("INSERT OR REPLACE INTO player_teams (PLAYER_NAME, TEAM) VALUES (?, ?)", real_rosters)
-    
-    # Fill in the rest from our cached live roster if available
-    try:
-        con.execute("INSERT OR IGNORE INTO player_teams SELECT PLAYER_NAME, TEAM FROM active_players")
-    except: pass
+    # Apply name overrides to player_teams to ensure they match PBP perfectly
+    for old, new in name_map.items():
+        con.execute("UPDATE player_teams SET PLAYER_NAME = ? WHERE PLAYER_NAME = ?", [new, old])
 
     # 3. Final Economic Cleanup
     logger.info("Aligning contracts with teams...")

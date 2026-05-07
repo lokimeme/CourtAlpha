@@ -45,16 +45,6 @@ def build_full_roster():
     logger.info(f"Successfully retrieved {len(df)} players.")
     
     con = duckdb.connect('data/courtalpha.duckdb')
-    
-    logger.info("Merging with manual overrides from reset_reality...")
-    # Load manual overrides to ensure stars are pinned correctly
-    try:
-        overrides = con.execute("SELECT * FROM player_teams").df()
-        if not overrides.empty:
-            # Overwrite the fetched data with manual overrides where they exist
-            df = pd.concat([overrides, df]).drop_duplicates(subset=['PLAYER_NAME'], keep='first')
-    except Exception as e:
-        pass
         
     con.execute("DROP TABLE IF EXISTS player_teams")
     con.execute("CREATE TABLE player_teams (PLAYER_NAME VARCHAR, TEAM VARCHAR)")
