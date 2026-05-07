@@ -115,8 +115,13 @@ def unify_player_names():
             if full_name not in last_name_buckets[last_name]:
                 last_name_buckets[last_name].append(full_name)
 
-    # We pull from play_by_play directly to fix the source
-    raw_players = con.execute("SELECT DISTINCT PLAYER_NAME FROM play_by_play WHERE PLAYER_NAME IS NOT NULL").df()['PLAYER_NAME'].tolist()
+    # We pull from all relevant columns to find every name that needs fixing
+    lineup_cols = [f"OFF_{i}" for i in range(1, 6)] + [f"DEF_{i}" for i in range(1, 6)]
+    all_cols = ["PLAYER_NAME"] + lineup_cols
+    
+    logger.info("Scanning all columns for names to unify...")
+    names_query = " UNION ".join([f"SELECT DISTINCT {c} as name FROM play_by_play WHERE {c} IS NOT NULL" for c in all_cols])
+    raw_players = con.execute(names_query).df()['name'].tolist()
     
     updates = []
     success_count = 0
