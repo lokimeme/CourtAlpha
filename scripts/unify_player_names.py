@@ -87,7 +87,16 @@ def unify_player_names():
         'Barnes': 'Scottie Barnes',
         'Mobley': 'Evan Mobley',
         'Allen': 'Jarrett Allen',
-        'Duren': 'Jalen Duren'
+        'Duren': 'Jalen Duren',
+        'Vucevic': 'Nikola Vucevic',
+        'Bey': 'Saddiq Bey',
+        'White': 'Coby White',
+        'Miller': 'Brandon Miller',
+        'Gordon': 'Aaron Gordon',
+        'Sharpe': 'Shaedon Sharpe',
+        'Brown': 'Jaylen Brown',
+        'Murray': 'Keegan Murray',
+        'Smith Jr.': 'Jabari Smith Jr.'
     }
     
     for full_name in meta_names:
