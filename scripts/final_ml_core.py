@@ -47,9 +47,9 @@ def run_final_ml_pipeline():
     """
     eff_df = con.execute(efficiency_query).df()
     
-    # Merge GP and filter by 20 games in the CURRENT season and 100 FGA
+    # Merge GP and filter by 5 games in the CURRENT season and 50 FGA
     eff_df = eff_df.merge(gp_df, on='PLAYER_NAME', how='inner')
-    eff_df = eff_df[(eff_df['GP'] >= 20) & (eff_df['FGA'] >= 100)]
+    eff_df = eff_df[(eff_df['GP'] >= 5) & (eff_df['FGA'] >= 50)]
     
     # Calculate real PPG
     eff_df['PPG'] = eff_df['TOTAL_PTS'] / eff_df['GP']
