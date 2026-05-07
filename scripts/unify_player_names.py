@@ -11,8 +11,10 @@ DB_PATH = 'data/courtalpha.duckdb'
 
 def normalize_name(name):
     if not name: return ""
-    name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii')
-    # Preserve suffixes but strip edges
+    # Strip accents
+    name = "".join(c for c in unicodedata.normalize('NFD', name) if unicodedata.category(c) != 'Mn')
+    name = name.replace('ć', 'c').replace('č', 'c').replace('š', 's').replace('ž', 'z')
+    # Clean extra whitespace
     return name.strip()
 
 def unify_player_names():
