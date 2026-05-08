@@ -103,52 +103,26 @@ def fix_everything():
         for old, new in name_map.items():
             con.execute(f"UPDATE play_by_play SET {col} = ? WHERE {col} = ?", [new, old])
 
-    # 2. Perfect Roster Alignment (LIVE FETCH)
-    logger.info("Fetching full live rosters from NBA API...")
-    from nba_api.stats.static import teams
-    from nba_api.stats.endpoints import commonteamroster
-    import time
-
-    nba_teams = teams.get_teams()
-    all_players = []
-
-    for t in nba_teams:
-        team_id = t['id']
-        tricode = t['abbreviation']
-        for attempt in range(3):
-            try:
-                roster_df = commonteamroster.CommonTeamRoster(team_id=team_id, timeout=15).get_data_frames()[0]
-                for _, row in roster_df.iterrows():
-                    all_players.append({
-                        'PLAYER_NAME': normalize_name(row['PLAYER']), 
-                        'TEAM': tricode
-                    })
-                logger.info(f"  Successfully synced {tricode}")
-                time.sleep(1.0)
-                break
-            except Exception as e:
-                logger.warning(f"  Timeout on {tricode} ({attempt+1}/3)")
-                time.sleep(2)
-
-    if all_players:
-        df = pd.DataFrame(all_players)
-        con.execute("DROP TABLE IF EXISTS player_teams")
-        con.execute("CREATE TABLE player_teams (PLAYER_NAME VARCHAR, TEAM VARCHAR)")
-        con.register('temp_roster', df)
-        con.execute("INSERT INTO player_teams SELECT PLAYER_NAME, TEAM FROM temp_roster")
-
-        # Apply name overrides to player_teams to ensure they match PBP perfectly
-        for old, new in name_map.items():
-            con.execute("UPDATE player_teams SET PLAYER_NAME = ? WHERE PLAYER_NAME = ?", [new, old])
-
-        logger.info(f"Successfully rebuilt player_teams with {len(df)} real-world players.")
+    # 2. Perfect Roster Alignment
+    logger.info("Normalizing and aligning names in player_teams...")
+    
+    # Forceful normalization of player_teams
+    con.execute("UPDATE player_teams SET PLAYER_NAME = TRIM(PLAYER_NAME)")
+    
+    # Apply name overrides to player_teams to ensure they match PBP perfectly
+    for old, new in name_map.items():
+        con.execute("UPDATE player_teams SET PLAYER_NAME = ? WHERE PLAYER_NAME = ?", [new, old])
 
     # 3. Final Economic Cleanup
     logger.info("Aligning contracts with teams...")
+    
+    # Forceful normalization of contracts
+    con.execute("UPDATE contracts SET PLAYER_NAME = TRIM(PLAYER_NAME)")
+
     # Apply name overrides to contracts as well
     for old, new in name_map.items():
         con.execute("UPDATE contracts SET PLAYER_NAME = ? WHERE PLAYER_NAME = ?", [new, old])
-
+        
     con.execute("""
         UPDATE contracts
         SET TEAM = player_teams.TEAM
