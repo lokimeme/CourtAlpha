@@ -103,63 +103,52 @@ def fix_everything():
         for old, new in name_map.items():
             con.execute(f"UPDATE play_by_play SET {col} = ? WHERE {col} = ?", [new, old])
 
-    # 2. Perfect Roster Alignment
-    logger.info("Aligning names in player_teams...")
-    
-    # Apply name overrides to player_teams to ensure they match PBP perfectly
-    for old, new in name_map.items():
-        con.execute("UPDATE player_teams SET PLAYER_NAME = ? WHERE PLAYER_NAME = ?", [new, old])
+    # 2. Perfect Roster Alignment (LIVE FETCH)
+    logger.info("Fetching full live rosters from NBA API...")
+    from nba_api.stats.static import teams
+    from nba_api.stats.endpoints import commonteamroster
+    import time
 
-    # Insert missing stars explicitly (since live API sometimes drops injured/inactive players)
-    real_rosters = [
-        ('Luka Doncic', 'DAL'), ('Kyrie Irving', 'DAL'), ('Klay Thompson', 'DAL'),
-        ('Stephen Curry', 'GSW'), ('Draymond Green', 'GSW'), ('Jonathan Kuminga', 'GSW'),
-        ('LeBron James', 'LAL'), ('Anthony Davis', 'LAL'), ('Austin Reaves', 'LAL'),
-        ('Joel Embiid', 'PHI'), ('Tyrese Maxey', 'PHI'), ('Paul George', 'PHI'),
-        ('Shai Gilgeous-Alexander', 'OKC'), ('Chet Holmgren', 'OKC'), ('Jalen Williams', 'OKC'),
-        ('Nikola Jokic', 'DEN'), ('Jamal Murray', 'DEN'), ('Aaron Gordon', 'DEN'),
-        ('Giannis Antetokounmpo', 'MIL'), ('Damian Lillard', 'MIL'), ('Brook Lopez', 'MIL'),
-        ('Jayson Tatum', 'BOS'), ('Jaylen Brown', 'BOS'), ('Kristaps Porzingis', 'BOS'),
-        ('Kevin Durant', 'PHX'), ('Devin Booker', 'PHX'), ('Bradley Beal', 'PHX'),
-        ('Tyrese Haliburton', 'IND'), ('Pascal Siakam', 'IND'), ('Myles Turner', 'IND'),
-        ('Anthony Edwards', 'MIN'), ('Rudy Gobert', 'MIN'), ('Karl-Anthony Towns', 'NYK'),
-        ('Jalen Brunson', 'NYK'), ('OG Anunoby', 'NYK'), ('Mikal Bridges', 'NYK'),
-        ('Victor Wembanyama', 'SAS'), ('Chris Paul', 'SAS'), ('Jeremy Sochan', 'SAS'),
-        ('Ja Morant', 'MEM'), ('Desmond Bane', 'MEM'), ('Jaren Jackson Jr.', 'MEM'),
-        ('Zion Williamson', 'NOP'), ('Brandon Ingram', 'NOP'), ('CJ McCollum', 'NOP'),
-        ('Paolo Banchero', 'ORL'), ('Franz Wagner', 'ORL'), ('Jalen Suggs', 'ORL'),
-        ('Cade Cunningham', 'DET'), ('Jaden Ivey', 'DET'), ('Jalen Duren', 'DET'), ('Tobias Harris', 'DET'),
-        ('Trae Young', 'ATL'), ('Jalen Johnson', 'ATL'), ('Clint Capela', 'ATL'),
-        ('Scottie Barnes', 'TOR'), ('RJ Barrett', 'TOR'), ('Immanuel Quickley', 'TOR'),
-        ('Lauri Markkanen', 'UTA'), ('Collin Sexton', 'UTA'), ('Walker Kessler', 'UTA'),
-        ('Jimmy Butler', 'MIA'), ('Bam Adebayo', 'MIA'), ('Tyler Herro', 'MIA'),
-        ('Kawhi Leonard', 'LAC'), ('James Harden', 'LAC'), ('Ivica Zubac', 'LAC'),
-        ('Donovan Mitchell', 'CLE'), ('Evan Mobley', 'CLE'), ('Jarrett Allen', 'CLE'),
-        ('Tim Hardaway Jr.', 'DET'), ('Seth Curry', 'CHA'), ('Coby White', 'CHI'),
-        ('De\'Aaron Fox', 'SAC'), ('Domantas Sabonis', 'SAC'), ('DeMar DeRozan', 'SAC'),
-        ('Nikola Vucevic', 'CHI'), ('Saddiq Bey', 'WAS'), ('Brandon Miller', 'CHA'),
-        ('Shaedon Sharpe', 'POR'), ('Keegan Murray', 'SAC'), ('Jabari Smith Jr.', 'HOU'),
-        ('Amen Thompson', 'HOU'), ('Jalen Green', 'HOU'), ('Alperen Sengun', 'HOU'),
-        ('Fred VanVleet', 'HOU'), ('Miles Bridges', 'CHA'), ('LaMelo Ball', 'CHA'),
-        ('Cam Thomas', 'BKN'), ('Nic Claxton', 'BKN'), ('Dennis Schroder', 'BKN'),
-        ('Kyle Kuzma', 'WAS'), ('Jordan Poole', 'WAS'), ('Alex Sarr', 'WAS'),
-        ('Josh Giddey', 'CHI'), ('Zach LaVine', 'CHI'), ('Dyson Daniels', 'ATL'),
-        ('Derrick White', 'BOS'), ('Jrue Holiday', 'BOS'), ('Norman Powell', 'LAC'),
-        ('Terry Rozier', 'MIA'), ('Keyonte George', 'UTA'), ('Bilal Coulibaly', 'WAS'),
-        ('Nickeil Alexander-Walker', 'MIN'), ('Cooper Flagg', 'BKN'), ('Deni Avdija', 'POR'),
-        ('Ty Jerome', 'CLE'), ('Kon Knueppel', 'UTA')
-    ]
-    for player, team in real_rosters:
-        con.execute("DELETE FROM player_teams WHERE PLAYER_NAME = ?", [player])
-        con.execute("INSERT INTO player_teams (PLAYER_NAME, TEAM) VALUES (?, ?)", [player, team])
+    nba_teams = teams.get_teams()
+    all_players = []
+
+    for t in nba_teams:
+        team_id = t['id']
+        tricode = t['abbreviation']
+        for attempt in range(3):
+            try:
+                roster_df = commonteamroster.CommonTeamRoster(team_id=team_id, timeout=15).get_data_frames()[0]
+                for _, row in roster_df.iterrows():
+                    all_players.append({
+                        'PLAYER_NAME': normalize_name(row['PLAYER']), 
+                        'TEAM': tricode
+                    })
+                logger.info(f"  Successfully synced {tricode}")
+                time.sleep(1.0)
+                break
+            except Exception as e:
+                logger.warning(f"  Timeout on {tricode} ({attempt+1}/3)")
+                time.sleep(2)
+
+    if all_players:
+        df = pd.DataFrame(all_players)
+        con.execute("DROP TABLE IF EXISTS player_teams")
+        con.execute("CREATE TABLE player_teams (PLAYER_NAME VARCHAR, TEAM VARCHAR)")
+        con.register('temp_roster', df)
+        con.execute("INSERT INTO player_teams SELECT PLAYER_NAME, TEAM FROM temp_roster")
+
+        # Apply name overrides to player_teams to ensure they match PBP perfectly
+        for old, new in name_map.items():
+            con.execute("UPDATE player_teams SET PLAYER_NAME = ? WHERE PLAYER_NAME = ?", [new, old])
+
+        logger.info(f"Successfully rebuilt player_teams with {len(df)} real-world players.")
 
     # 3. Final Economic Cleanup
     logger.info("Aligning contracts with teams...")
-
     # Apply name overrides to contracts as well
     for old, new in name_map.items():
         con.execute("UPDATE contracts SET PLAYER_NAME = ? WHERE PLAYER_NAME = ?", [new, old])
-        
+
     con.execute("""
         UPDATE contracts
         SET TEAM = player_teams.TEAM
