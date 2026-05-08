@@ -22,19 +22,18 @@ def prepare_deploy_db():
         src_conn.execute(f"CREATE TABLE tgt.{t} AS SELECT * FROM main.{t}")
 
     print("Aggregating shot density data...")
+    # Strict filter: Only players who passed the 20-game / 100-FGA metric threshold
     density_query = """
         SELECT 
-            PLAYER_NAME,
+            pbp.PLAYER_NAME,
             ROUND(LOC_X / 10) * 10 as BIN_X,
             ROUND(LOC_Y / 10) * 10 as BIN_Y,
             COUNT(*) as SHOT_COUNT
-        FROM main.play_by_play
-        WHERE PLAYER_NAME IS NOT NULL 
+        FROM main.play_by_play pbp
+        JOIN tgt.player_metrics m ON pbp.PLAYER_NAME = m.PLAYER_NAME
+        WHERE pbp.PLAYER_NAME IS NOT NULL 
           AND LOC_X IS NOT NULL
           AND ACTION_TYPE IN ('Made Shot', 'Missed Shot')
-          AND PLAYER_NAME NOT LIKE '%Putback%'
-          AND PLAYER_NAME NOT LIKE '%Reverse%'
-          AND PLAYER_NAME NOT LIKE '%Tip%'
         GROUP BY 1, 2, 3
     """
     src_conn.execute("CREATE TABLE tgt.player_shot_density AS " + density_query)
