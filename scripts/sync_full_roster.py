@@ -4,9 +4,17 @@ from nba_api.stats.static import teams
 from nba_api.stats.endpoints import commonteamroster
 import time
 import logging
+import unicodedata
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("RosterSync")
+
+def norm(name):
+    if not name: return ""
+    # Strip accents
+    name = "".join(c for c in unicodedata.normalize('NFD', name) if unicodedata.category(c) != 'Mn')
+    name = name.replace('ć', 'c').replace('č', 'c').replace('š', 's').replace('ž', 'z')
+    return name.strip()
 
 def build_full_roster():
     nba_teams = teams.get_teams()
@@ -21,14 +29,15 @@ def build_full_roster():
         success = False
         for attempt in range(3):
             try:
-                roster_df = commonteamroster.CommonTeamRoster(team_id=team_id, timeout=10).get_data_frames()[0]
+                roster_df = commonteamroster.CommonTeamRoster(team_id=team_id, timeout=15).get_data_frames()[0]
                 for _, row in roster_df.iterrows():
                     all_players.append({
-                        'PLAYER_NAME': row['PLAYER'],
+                        'PLAYER_NAME': norm(row['PLAYER']),
                         'TEAM': tricode
                     })
+                logger.info(f"  Successfully synced {tricode}")
                 success = True
-                time.sleep(1.5)
+                time.sleep(1.0)
                 break
             except Exception as e:
                 logger.warning(f"Timeout on {tricode}, attempt {attempt+1}/3: {e}")
