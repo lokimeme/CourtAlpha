@@ -159,8 +159,8 @@ def process_game(game_id, con):
         else:
             def_team_id = away_team_id if off_team_id == home_team_id else home_team_id
         
-        off_lineup = sorted([player_info[pid]['pbpName'] for pid in current_lineups[off_team_id]])
-        def_lineup = sorted([player_info[pid]['pbpName'] for pid in current_lineups[def_team_id]])
+        off_lineup = sorted([player_info[pid]['fullName'] for pid in current_lineups[off_team_id]])
+        def_lineup = sorted([player_info[pid]['fullName'] for pid in current_lineups[def_team_id]])
         
         while len(off_lineup) < 5: off_lineup.append(None)
         while len(def_lineup) < 5: def_lineup.append(None)
