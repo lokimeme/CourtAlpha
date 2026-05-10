@@ -95,20 +95,18 @@ class ShotChartEngine:
             fig.update_layout(title="No Spatial Data for this Unit")
             return fig
 
-        # Create Heatmap trace
-        fig.add_trace(go.Histogram2dContour(
-            x=density_df['BIN_X'],
-            y=density_df['BIN_Y'],
-            z=density_df['SHOT_COUNT'],
+        # Use Histogram2d for better stability with pre-binned data
+        fig.add_trace(go.Histogram2d(
+            x=density_df['BIN_X'].values,
+            y=density_df['BIN_Y'].values,
+            z=density_df['SHOT_COUNT'].values,
             histfunc="sum",
-            colorscale='Hot',
-            reversescale=True,
-            showlabels=False,
-            contours=dict(coloring='heatmap', showlines=False),
+            colorscale='YlOrRd',
+            reversescale=False,
             opacity=0.8,
             hoverinfo='skip',
-            nbinsx=50,
-            nbinsy=50
+            xbins=dict(start=-250, end=250, size=10),
+            ybins=dict(start=-50, end=420, size=10)
         ))
 
         fig = self.draw_court_shapes(fig)
