@@ -316,8 +316,8 @@ else:
             
             st.markdown("---")
             st.subheader("Spatial Profile")
-            st.progress(min(max(p['RIM_PRESSURE'], 0.0), 1.0), text=f"Rim Pressure: {p['RIM_PRESSURE']:.1%}")
-            st.progress(min(max(p['SPACING_RATING'], 0.0), 1.0), text=f"Spacing Rating: {p['SPACING_RATING']:.1%}")
+            st.progress(float(min(max(p['RIM_PRESSURE'], 0.0), 1.0)), text=f"Rim Pressure: {p['RIM_PRESSURE']:.1%}")
+            st.progress(float(min(max(p['SPACING_RATING'], 0.0), 1.0)), text=f"Spacing Rating: {p['SPACING_RATING']:.1%}")
             
             st.markdown("---")
             st.subheader("Official Performance Data")
