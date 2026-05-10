@@ -45,6 +45,14 @@ def ingest_metrics(csv_path=None):
         ext_df = pd.DataFrame(ext_data)
 
     logger.info(f"Updating {len(ext_df)} players with external benchmarks...")
+    
+    # Ensure columns exist
+    cols_to_add = [('EXTERNAL_LEBRON', 'FLOAT'), ('EXTERNAL_EPM', 'FLOAT'), ('EXTERNAL_DARKO', 'FLOAT')]
+    existing_cols = [c[1] for c in con.execute("PRAGMA table_info(player_metrics)").fetchall()]
+    for col, ctype in cols_to_add:
+        if col not in existing_cols:
+            con.execute(f"ALTER TABLE player_metrics ADD COLUMN {col} {ctype}")
+
     con.register('temp_ext', ext_df)
     con.execute("""
         UPDATE player_metrics
