@@ -20,10 +20,10 @@ from scripts.utils import setup_logging, format_currency
 DB_PATH = 'data/courtalpha.duckdb'
 logger = setup_logging()
 
-def calculate_market_value(meta_impact, dura_coeff, age=27, ppg=0):
+def calculate_market_value(meta_impact, dura_coeff, age=27, ppg=0, archetype=""):
     """
     Translates Meta-Impact (Pts/100) into seasonal market value.
-    Version 2.7: High-Fidelity Star Protection.
+    Version 2.8: Role-Player Precision.
     """
     replacement_buffer = 2.5
     impact_over_replacement = meta_impact + replacement_buffer
@@ -34,7 +34,7 @@ def calculate_market_value(meta_impact, dura_coeff, age=27, ppg=0):
     
     REPLACEMENT_VAL = 1121428 
     
-    # Adjusted trajectory multipliers (Less harsh for elite vets)
+    # Base Trajectory Multipliers
     if age < 23:
         traj_multiplier = 1.25
     elif age < 26:
@@ -44,8 +44,13 @@ def calculate_market_value(meta_impact, dura_coeff, age=27, ppg=0):
     elif age < 35:
         traj_multiplier = 0.90
     else:
-        # Superstars (20+ PPG) only drop to 0.85 instead of 0.65
         traj_multiplier = 0.85 if ppg >= 20 else 0.70
+
+    # Role-Based Tuning: 
+    # High-value role players (Defensive Specialists / Connectors) often have a market cap 
+    # around $18M-$22M if their usage is low (PPG < 15)
+    if archetype in ["Defensive Specialist", "Two-Way Connector"] and ppg < 15:
+        traj_multiplier *= 0.82 # Specifically tuned to bring Keon-tier players to ~$20M
 
     # Modern Win-Rates (Max contracts are now 50-60M+)
     if wins_added > 12:
@@ -61,7 +66,7 @@ def calculate_market_value(meta_impact, dura_coeff, age=27, ppg=0):
     
     market_val = (REPLACEMENT_VAL + impact_value) * traj_multiplier * dura_coeff
     
-    # Superstar Floor: A 20 PPG scorer is worth at least $25M in 2026 market
+    # Superstar Floor
     if ppg >= 25:
         market_val = max(market_val, 45000000)
     elif ppg >= 20:
@@ -133,7 +138,7 @@ def run_economic_pipeline():
         # Use calculated PPG from player_metrics
         ppg = row['PPG'] if not pd.isnull(row['PPG']) else 0.0
         
-        market_val = calculate_market_value(meta_impact, 0.95, age, ppg)
+        market_val = calculate_market_value(meta_impact, 0.95, age, ppg, arch)
         surplus = market_val - cost
         
         flags = ""
