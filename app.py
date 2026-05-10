@@ -131,6 +131,23 @@ def load_shot_data(player_name):
     con.close()
     return shots
 
+@st.cache_data
+def load_lineup_shot_data(player_names):
+    from pathlib import Path
+    db_path = Path(__file__).parent / "data" / DB_NAME
+    con = duckdb.connect(str(db_path), read_only=True)
+    
+    query = """
+        SELECT BIN_X, BIN_Y, SUM(SHOT_COUNT) as SHOT_COUNT
+        FROM player_shot_density 
+        WHERE PLAYER_NAME IN ({})
+        GROUP BY 1, 2
+    """.format(','.join(['?'] * len(player_names)))
+    
+    data = con.execute(query, player_names).df()
+    con.close()
+    return data
+
 st.sidebar.title("CourtAlpha")
 st.sidebar.markdown("*Executive Intelligence Suite*")
 st.sidebar.markdown("---")
@@ -219,6 +236,33 @@ else:
     if nav == "Executive Summary":
         st.title("Executive Front Office Dashboard")
         
+        # 1. Injury Simulation Sub-Engine
+        with st.sidebar:
+            st.markdown("---")
+            st.subheader("🏥 Next-Man-Up Simulator")
+            deactivate_player = st.selectbox("Simulate Injury (Deactivate)", ["None"] + sorted(df['PLAYER_NAME'].unique()))
+            
+        if deactivate_player != "None":
+            p_injured = df[df['PLAYER_NAME'] == deactivate_player].iloc[0]
+            team_name = p_injured['TEAM']
+            st.warning(f"⚠️ **INJURY REPORT:** {deactivate_player} is out for the season. Analyzing {team_name} roster depth...")
+            
+            # Calculate team loss
+            team_roster = df[df['TEAM'] == team_name].sort_values(by='META_IMPACT', ascending=False)
+            healthy_roster = team_roster[team_roster['PLAYER_NAME'] != deactivate_player]
+            
+            loss_pct = (p_injured['META_IMPACT'] / team_roster['META_IMPACT'].sum()) if team_roster['META_IMPACT'].sum() > 0 else 0
+            
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.metric("Impact Lost", f"{p_injured['META_IMPACT']:.2f}")
+            with c2:
+                st.metric("Relative Team Loss", f"{loss_pct:.1%}")
+            with c3:
+                st.metric("Replacement Candidate", healthy_roster.iloc[4]['PLAYER_NAME'] if len(healthy_roster) > 4 else "None")
+            
+            st.info(f"**Strategic Consequence:** {team_name} loses its primary '{p_injured['ARCHETYPE_NAME']}'. Rotation shifts toward higher-usage for the bench unit.")
+
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total Players Analyzed", len(df))
@@ -414,34 +458,49 @@ else:
             
             st.dataframe(rec_lineup[['PLAYER_NAME', 'POSITION', 'ARCHETYPE_NAME', 'META_IMPACT', 'MARKET_VALUE', 'STRATEGIC_OUTLOOK']], use_container_width=True)
 
+        # 5. Roster Geometry Visualizer
+        st.markdown("---")
+        st.subheader("📐 Unit Floor Geometry")
+        st.info("Analyzing the spatial overlap and gravitational centers of this 5-man unit.")
+        
+        lineup_names = rec_lineup['PLAYER_NAME'].tolist()
+        combined_spatial_data = load_lineup_shot_data(lineup_names)
+        
+        from scripts.visual_engine import ShotChartEngine
+        viz = ShotChartEngine()
+        heatmap_fig = viz.create_lineup_heatmap(combined_spatial_data, title=f"Floor Gravity: {star_player}'s Unit")
+        st.plotly_chart(heatmap_fig, use_container_width=True)
+
     elif nav == "Trade Simulator":
-        st.title("CBA Trade Simulator")
+        st.title("Strategic Trade Simulator")
         cba = CBAEngine()
         
-        st.info("Simulate trades and check legality under 2023 CBA rules.")
+        st.info("Simulate trades and analyze the 'Butterfly Effect' on your team's identity.")
+        
+        # 1. Team Context
+        sim_team = st.selectbox("Select Your Team", sorted(df['TEAM'].unique()), index=0)
+        current_roster = df[df['TEAM'] == sim_team].sort_values(by='META_IMPACT', ascending=False).head(12)
         
         col1, col2 = st.columns(2)
         
         with col1:
             st.subheader("Outgoing Assets")
-            outgoing = st.multiselect("Select Players to Trade Away", df['PLAYER_NAME'].unique(), key="out")
+            outgoing = st.multiselect("Select Players to Trade Away", current_roster['PLAYER_NAME'].unique(), key="out")
             out_df = df[df['PLAYER_NAME'].isin(outgoing)]
             st.table(out_df[['PLAYER_NAME', 'CONTRACT_COST', 'META_IMPACT']])
             total_out = out_df['CONTRACT_COST'].sum()
-            avg_impact_out = out_df['META_IMPACT'].mean() if not out_df.empty else 0
             
         with col2:
             st.subheader("Incoming Assets")
-            incoming = st.multiselect("Select Players to Acquire", df['PLAYER_NAME'].unique(), key="in")
+            incoming = st.multiselect("Select Players to Acquire", df[df['TEAM'] != sim_team]['PLAYER_NAME'].unique(), key="in")
             in_df = df[df['PLAYER_NAME'].isin(incoming)]
             st.table(in_df[['PLAYER_NAME', 'CONTRACT_COST', 'META_IMPACT']])
             total_in = in_df['CONTRACT_COST'].sum()
-            avg_impact_in = in_df['META_IMPACT'].mean() if not in_df.empty else 0
 
         st.markdown("---")
         
-        team_salary = st.number_input("Your Team's Total Salary (Current)", value=170000000, step=1000000)
-        
+        # 2. Legality Check
+        team_salary = df[df['TEAM'] == sim_team]['CONTRACT_COST'].sum()
         legality = cba.check_trade_legality(out_df['CONTRACT_COST'].tolist(), in_df['CONTRACT_COST'].tolist(), team_salary)
         
         if legality['legal']:
@@ -451,9 +510,40 @@ else:
             for note in legality['notes']:
                 st.write(f"- {note}")
                 
-        st.subheader("Net Impact Change")
-        net_impact = (avg_impact_in * len(in_df)) - (avg_impact_out * len(out_df))
-        st.metric("Net Meta-Impact Change", f"{net_impact:+.2f} Pts/100")
+        # 3. Butterfly Effect (Identity Analysis)
+        st.subheader("🦋 Strategic Butterfly Effect")
+        
+        # Calculate Baseline
+        base_impact = current_roster['META_IMPACT'].mean()
+        base_spacing = current_roster['SPACING_RATING'].mean()
+        base_rim = current_roster['RIM_PRESSURE'].mean()
+        base_age = current_roster['AGE'].mean()
+        
+        # Calculate New Identity
+        new_roster = pd.concat([current_roster[~current_roster['PLAYER_NAME'].isin(outgoing)], in_df]).head(12)
+        new_impact = new_roster['META_IMPACT'].mean()
+        new_spacing = new_roster['SPACING_RATING'].mean()
+        new_rim = new_roster['RIM_PRESSURE'].mean()
+        new_age = new_roster['AGE'].mean()
+        
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Net Impact", f"{new_impact - base_impact:+.2f}", delta=f"{new_impact - base_impact:+.2f}")
+        m2.metric("Spacing Change", f"{new_spacing - base_spacing:+.1%}", delta=f"{(new_spacing - base_spacing):.1%}")
+        m3.metric("Rim Gravity", f"{new_rim - base_rim:+.1%}", delta=f"{(new_rim - base_rim):.1%}")
+        m4.metric("Avg Age Change", f"{new_age - base_age:+.1f}", delta=f"{new_age - base_age:+.1f}", delta_color="inverse")
+        
+        # Heuristic Insight Engine
+        st.markdown("#### **Front Office Scouting Notes**")
+        if new_spacing > base_spacing + 0.05:
+            st.write("🎯 **Spacing Surge:** Acquire elite shooting depth. Your slashers will have significantly more room to operate.")
+        if new_rim > base_rim + 0.05:
+            st.write("🛡️ **Paint Fortress:** This trade bolsters your interior integrity and rim-running gravity.")
+        if new_age < base_age - 2:
+            st.write("⏳ **Window Expansion:** You've significantly lowered the team's average age, extending your competitive timeline.")
+        if new_impact > base_impact + 0.5:
+            st.write("📈 **Competitive Leap:** On-court impact suggests this team moves into a higher tier of championship contention.")
+        elif new_impact < base_impact - 0.5:
+            st.write("⚠️ **Asset Liquidation:** You are sacrificing immediate on-court production, likely to prioritize future draft assets or cap space.")
         
         net_salary = total_in - total_out
         st.metric("Net Salary Change", format_currency(net_salary), delta=format_currency(net_salary), delta_color="inverse")

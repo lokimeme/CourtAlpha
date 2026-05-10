@@ -86,6 +86,47 @@ class ShotChartEngine:
 
         return fig
 
+    def create_lineup_heatmap(self, density_df, title="Lineup Floor Geometry"):
+        """Generates a 2D density heatmap for a 5-man unit."""
+        
+        fig = go.Figure()
+        
+        if density_df.empty:
+            fig.update_layout(title="No Spatial Data for this Unit")
+            return fig
+
+        # Create Heatmap trace
+        fig.add_trace(go.Histogram2dContour(
+            x=density_df['BIN_X'],
+            y=density_df['BIN_Y'],
+            z=density_df['SHOT_COUNT'],
+            histfunc="sum",
+            colorscale='Hot',
+            reversescale=True,
+            showlabels=False,
+            contours=dict(coloring='heatmap', showlines=False),
+            opacity=0.8,
+            hoverinfo='skip',
+            nbinsx=50,
+            nbinsy=50
+        ))
+
+        fig = self.draw_court_shapes(fig)
+
+        fig.update_layout(
+            title=title,
+            template="plotly_dark",
+            xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-250, 250]),
+            yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-50, 420], scaleanchor="x"),
+            width=700,
+            height=600,
+            margin=dict(l=20, r=20, t=60, b=20),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
+
+        return fig
+
 if __name__ == "__main__":
     engine = ShotChartEngine()
     mock_data = pd.DataFrame({
