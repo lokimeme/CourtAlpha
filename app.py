@@ -54,7 +54,7 @@ def load_data():
     try:
         mapping_query = """
             SELECT PLAYER_NAME, TEAM, POSITION FROM (
-                SELECT PLAYER_NAME, TEAM, 'N/A' as POSITION, 1 as priority FROM player_teams
+                SELECT PLAYER_NAME, TEAM, POSITION, 1 as priority FROM player_teams
                 UNION ALL
                 SELECT PLAYER_NAME, TEAM, POSITION, 2 as priority FROM contracts
             ) 
@@ -292,6 +292,18 @@ else:
             st.progress(min(max(p['SPACING_RATING'], 0.0), 1.0), text=f"Spacing Rating: {p['SPACING_RATING']:.1%}")
             
             st.markdown("---")
+            st.subheader("Official Performance Data")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.metric("Rebounds", f"{p['REB']:.1f}")
+                st.metric("Assists", f"{p['AST']:.1f}")
+                st.metric("FG%", f"{p['FG_PCT']:.1%}")
+            with c2:
+                st.metric("Steals", f"{p['STL']:.1f}")
+                st.metric("Blocks", f"{p['BLK']:.1f}")
+                st.metric("3PT%", f"{p['FG3_PCT']:.1%}")
+
+            st.markdown("---")
             try:
                 pdf_bytes = generate_player_pdf(p.to_dict())
                 st.download_button(
@@ -304,6 +316,27 @@ else:
                 st.warning(f"PDF generation failed: {e}")
             
         with col2:
+            # Action Log (PBP Linking)
+            with st.expander("🎥 Full Season Play-by-Play Tape", expanded=False):
+                st.info(f"Retrieving all recorded play-by-play events for {player_name} in the 2025-26 Season...")
+                from pathlib import Path
+                db_path = Path(__file__).parent / "data" / "courtalpha.duckdb" # Use main DB for full PBP
+                if db_path.exists():
+                    con_pbp = duckdb.connect(str(db_path), read_only=True)
+                    pbp_data = con_pbp.execute("""
+                        SELECT PERIOD, CLOCK, ACTION_TYPE, SUB_TYPE, DESCRIPTION 
+                        FROM play_by_play 
+                        WHERE PLAYER_NAME = ? AND SEASON = '2025-26'
+                        ORDER BY GAME_ID, PERIOD, ACTION_NUMBER
+                    """, [player_name]).df()
+                    con_pbp.close()
+                    if not pbp_data.empty:
+                        st.dataframe(pbp_data, use_container_width=True, height=250)
+                    else:
+                        st.warning("No detailed PBP events found for this player in the current season.")
+                else:
+                    st.error("Deep Intelligence Storage (Source DB) not found. Detailed PBP logs are unavailable in this environment.")
+
             tab1, tab2, tab3 = st.tabs(["Metric Decomposition", "Skill DNA", "Shot Heat Map"])
             
             with tab1:
