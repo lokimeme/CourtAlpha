@@ -20,43 +20,53 @@ from scripts.utils import setup_logging, format_currency
 DB_PATH = 'data/courtalpha.duckdb'
 logger = setup_logging()
 
-def calculate_market_value(meta_impact, dura_coeff, age=27):
+def calculate_market_value(meta_impact, dura_coeff, age=27, ppg=0):
     """
     Translates Meta-Impact (Pts/100) into seasonal market value.
-    Version 2.4: External Benchmark Integration.
+    Version 2.7: High-Fidelity Star Protection.
     """
-    replacement_buffer = 2.0
+    replacement_buffer = 2.5
     impact_over_replacement = meta_impact + replacement_buffer
     
+    # Wins Added estimated from impact
     total_points = impact_over_replacement * 45.0 
     wins_added = total_points / 30.0
     
     REPLACEMENT_VAL = 1121428 
     
+    # Adjusted trajectory multipliers (Less harsh for elite vets)
     if age < 23:
         traj_multiplier = 1.25
     elif age < 26:
         traj_multiplier = 1.15
     elif age < 30:
         traj_multiplier = 1.0 
-    elif age < 34:
-        traj_multiplier = 0.85
+    elif age < 35:
+        traj_multiplier = 0.90
     else:
-        traj_multiplier = 0.65
+        # Superstars (20+ PPG) only drop to 0.85 instead of 0.65
+        traj_multiplier = 0.85 if ppg >= 20 else 0.70
 
+    # Modern Win-Rates (Max contracts are now 50-60M+)
     if wins_added > 12:
-        win_rate = 6500000
+        win_rate = 8500000
     elif wins_added > 8:
-        win_rate = 5500000
+        win_rate = 7500000
     elif wins_added > 4:
-        win_rate = 4500000
+        win_rate = 6000000
     else:
-        win_rate = 3500000
+        win_rate = 4500000
     
     impact_value = wins_added * win_rate
     
     market_val = (REPLACEMENT_VAL + impact_value) * traj_multiplier * dura_coeff
     
+    # Superstar Floor: A 20 PPG scorer is worth at least $25M in 2026 market
+    if ppg >= 25:
+        market_val = max(market_val, 45000000)
+    elif ppg >= 20:
+        market_val = max(market_val, 25000000)
+        
     return max(REPLACEMENT_VAL, market_val)
 
 def run_economic_pipeline():
@@ -110,16 +120,22 @@ def run_economic_pipeline():
     for idx, row in df.iterrows():
         p_name = row['PLAYER_NAME']
         age = row['CALC_AGE'] if not pd.isnull(row['CALC_AGE']) else 27 
-        cost = row['RAW_COST'] if not pd.isnull(row['RAW_COST']) and row['RAW_COST'] > 0 else 1121428
+        
+        # Smarter fallback for missing contracts (Vet Min vs Rookie Min)
+        default_cost = 3630000 if age >= 30 else 1121428
+        cost = row['RAW_COST'] if not pd.isnull(row['RAW_COST']) and row['RAW_COST'] > 0 else default_cost
+        
         arch = row['ARCHETYPE_NAME']
         
         # Meta-Impact derived from Shrunk impact (Pts/100 scale)
         meta_impact = float(row['SHRUNK_IMPACT'] * 100)
-        market_val = calculate_market_value(meta_impact, 0.95, age)
-        surplus = market_val - cost
         
         # Use calculated PPG from player_metrics
         ppg = row['PPG'] if not pd.isnull(row['PPG']) else 0.0
+        
+        market_val = calculate_market_value(meta_impact, 0.95, age, ppg)
+        surplus = market_val - cost
+        
         flags = ""
         if age >= 35: flags += " 📉 Age Risk"
         elif age <= 22: flags += " 📈 Upside"
