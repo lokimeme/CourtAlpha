@@ -47,9 +47,10 @@ def calculate_market_value(meta_impact, dura_coeff, age=27, ppg=0, archetype="")
         traj_multiplier = 0.85 if ppg >= 20 else 0.70
 
     # Role-Based Tuning: 
-    # High-value role players (Defensive Specialists / Connectors) often have a market cap 
-    # around $18M-$22M if their usage is low (PPG < 15)
-    if archetype in ["Defensive Specialist", "Two-Way Connector"] and ppg < 15:
+    # High-value role players (Defensive Specialists / Connectors / Spacers / Rim Protectors)
+    # often have a market cap around $18M-$22M if their usage is low (PPG < 15)
+    role_cap_archetypes = ["Defensive Specialist", "Two-Way Connector", "Movement Shooter", "Rim Protector"]
+    if archetype in role_cap_archetypes and ppg < 15:
         traj_multiplier *= 0.82 # Specifically tuned to bring Keon-tier players to ~$20M
 
     # Modern Win-Rates (Max contracts are now 50-60M+)
