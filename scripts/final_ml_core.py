@@ -105,40 +105,50 @@ def run_final_ml_pipeline():
     kmeans = KMeans(n_clusters=8, random_state=42, n_init=20)
     cluster_df['ARCHETYPE_ID'] = kmeans.fit_predict(scaled_features)
 
-    # Dynamic Archetype Labeling
+    # Dynamic Archetype Labeling v4.0 (Robust Heuristics)
     centroids = kmeans.cluster_centers_
+    # Index order: 0:LOGO, 1:FLOATER, 2:LOB, 3:CUT, 4:POST, 5:SPOTUP, 6:ISOLATION, 7:RIM_PROT
+    
     mapping = {}
     remaining_ids = list(range(8))
     
-    idx = np.argmax(centroids[:, 0]) # Floor General: Highest LOGO
-    mapping[idx] = "Floor General"
-    remaining_ids.remove(idx)
-    
-    idx = remaining_ids[np.argmax(centroids[remaining_ids, 4])] # Self-Created Scorer: Highest ISOLATION
-    mapping[idx] = "Self-Created Scorer"
-    remaining_ids.remove(idx)
-    
-    idx = remaining_ids[np.argmax(centroids[remaining_ids, 2])] # Post Specialist: Highest POST
-    mapping[idx] = "Post Specialist"
-    remaining_ids.remove(idx)
-    
-    idx = remaining_ids[np.argmax(centroids[remaining_ids, 3])] # Movement Shooter: Highest SPOTUP
-    mapping[idx] = "Movement Shooter"
-    remaining_ids.remove(idx)
-    
-    idx = remaining_ids[np.argmax(centroids[remaining_ids, 5])] # Defensive Specialist: Highest RIM_PROT
-    mapping[idx] = "Defensive Specialist"
-    remaining_ids.remove(idx)
-    
-    idx = remaining_ids[np.argmax(centroids[remaining_ids, 1])] # Two-Way Connector: Highest FLOATER
-    mapping[idx] = "Two-Way Connector"
-    remaining_ids.remove(idx)
-
-    idx = remaining_ids[np.argmax(centroids[remaining_ids, 5])] # Rim Protector: Highest RIM_PROT (of last 2)
+    # 1. Rim Protector: Highest RIM_PROT
+    idx = remaining_ids[np.argmax(centroids[remaining_ids, 7])]
     mapping[idx] = "Rim Protector"
     remaining_ids.remove(idx)
     
-    mapping[remaining_ids[0]] = "Interior Finisher"
+    # 2. Movement Shooter: Highest SPOTUP
+    idx = remaining_ids[np.argmax(centroids[remaining_ids, 5])]
+    mapping[idx] = "Movement Shooter"
+    remaining_ids.remove(idx)
+    
+    # 3. Floor General: Highest LOGO
+    idx = remaining_ids[np.argmax(centroids[remaining_ids, 0])]
+    mapping[idx] = "Floor General"
+    remaining_ids.remove(idx)
+    
+    # 4. Post Specialist: Highest POST
+    idx = remaining_ids[np.argmax(centroids[remaining_ids, 4])]
+    mapping[idx] = "Post Specialist"
+    remaining_ids.remove(idx)
+    
+    # 5. Self-Created Scorer: Highest ISOLATION
+    idx = remaining_ids[np.argmax(centroids[remaining_ids, 6])]
+    mapping[idx] = "Self-Created Scorer"
+    remaining_ids.remove(idx)
+    
+    # 6. High-Usage Slasher: Highest FLOATER
+    idx = remaining_ids[np.argmax(centroids[remaining_ids, 1])]
+    mapping[idx] = "High-Usage Slasher"
+    remaining_ids.remove(idx)
+    
+    # 7. Two-Way Connector: Highest combined score of non-zero stats
+    idx = remaining_ids[0]
+    mapping[idx] = "Two-Way Connector"
+    remaining_ids.remove(idx)
+
+    # 8. Defensive Specialist: Last one
+    mapping[remaining_ids[0]] = "Defensive Specialist"
     
     cluster_df['ARCHETYPE_NAME'] = cluster_df['ARCHETYPE_ID'].map(mapping)
 
@@ -173,7 +183,7 @@ def run_final_ml_pipeline():
     """)
 
     con.close()
-    logger.info("Phase 2 ML Core successfully executed with accurate PPG.")
+    logger.info("Phase 2 ML Core successfully executed with accurate PPG and robust archetypes.")
 
 if __name__ == "__main__":
     run_final_ml_pipeline()
