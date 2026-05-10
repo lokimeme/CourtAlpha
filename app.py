@@ -348,22 +348,19 @@ else:
             with st.expander("🎥 Full Season Play-by-Play Tape", expanded=False):
                 st.info(f"Retrieving all recorded play-by-play events for {player_name} in the 2025-26 Season...")
                 from pathlib import Path
-                db_path = Path(__file__).parent / "data" / "courtalpha.duckdb" # Use main DB for full PBP
-                if db_path.exists():
-                    con_pbp = duckdb.connect(str(db_path), read_only=True)
-                    pbp_data = con_pbp.execute("""
-                        SELECT PERIOD, CLOCK, ACTION_TYPE, SUB_TYPE, DESCRIPTION 
-                        FROM play_by_play 
-                        WHERE PLAYER_NAME = ? AND SEASON = '2025-26'
-                        ORDER BY GAME_ID, PERIOD, ACTION_NUMBER
-                    """, [player_name]).df()
-                    con_pbp.close()
-                    if not pbp_data.empty:
-                        st.dataframe(pbp_data, use_container_width=True, height=250)
-                    else:
-                        st.warning("No detailed PBP events found for this player in the current season.")
+                db_path = Path(__file__).parent / "data" / DB_NAME # Use production DB
+                con_pbp = duckdb.connect(str(db_path), read_only=True)
+                pbp_data = con_pbp.execute("""
+                    SELECT PERIOD, CLOCK, ACTION_TYPE, SUB_TYPE, DESCRIPTION 
+                    FROM player_pbp_tape 
+                    WHERE PLAYER_NAME = ?
+                    ORDER BY GAME_ID, PERIOD, ACTION_NUMBER
+                """, [player_name]).df()
+                con_pbp.close()
+                if not pbp_data.empty:
+                    st.dataframe(pbp_data, use_container_width=True, height=250)
                 else:
-                    st.error("Deep Intelligence Storage (Source DB) not found. Detailed PBP logs are unavailable in this environment.")
+                    st.warning("No detailed PBP events found for this player in the current season.")
 
             tab1, tab2, tab3 = st.tabs(["Metric Decomposition", "Skill DNA", "Shot Heat Map"])
             

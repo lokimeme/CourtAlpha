@@ -37,6 +37,15 @@ def prepare_deploy_db():
         GROUP BY 1, 2, 3
     """
     src_conn.execute("CREATE TABLE tgt.player_shot_density AS " + density_query)
+
+    print("Building PBP Tape for production...")
+    tape_query = """
+        SELECT pbp.PLAYER_NAME, pbp.PERIOD, pbp.CLOCK, pbp.ACTION_TYPE, pbp.SUB_TYPE, pbp.DESCRIPTION, pbp.GAME_ID, pbp.ACTION_NUMBER
+        FROM main.play_by_play pbp
+        JOIN tgt.player_metrics m ON pbp.PLAYER_NAME = m.PLAYER_NAME
+        WHERE pbp.SEASON = '2025-26'
+    """
+    src_conn.execute("CREATE TABLE tgt.player_pbp_tape AS " + tape_query)
     
     src_conn.close()
     
