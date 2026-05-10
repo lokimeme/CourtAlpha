@@ -15,40 +15,97 @@ class CourtAlphaPDF(FPDF):
 def generate_player_pdf(p_data):
     pdf = CourtAlphaPDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    
+
+    # 1. Executive Summary Header
     pdf.set_font("Arial", 'B', 16)
-    pdf.cell(0, 10, f"Player Profile: {p_data['PLAYER_NAME']}", ln=True)
-    pdf.set_font("Arial", size=12)
+    pdf.cell(0, 12, f"Player Intelligence Brief: {p_data['PLAYER_NAME']}", ln=True, border='B')
     pdf.ln(5)
-    
-    pdf.cell(50, 10, "Team:", border=1)
-    pdf.cell(100, 10, str(p_data['TEAM']), border=1, ln=True)
-    pdf.cell(50, 10, "Strategic Outlook:", border=1)
-    pdf.cell(100, 10, str(p_data['STRATEGIC_OUTLOOK']), border=1, ln=True)
-    pdf.cell(50, 10, "Archetype:", border=1)
-    pdf.cell(100, 10, str(p_data['ARCHETYPE_NAME']), border=1, ln=True)
-    pdf.ln(10)
-    
+
+    # 2. Vital Stats Grid
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(40, 8, "TEAM:", border=0)
+    pdf.set_font("Arial", '', 11)
+    pdf.cell(50, 8, str(p_data['TEAM']), ln=True)
+
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(40, 8, "POSITION:", border=0)
+    pdf.set_font("Arial", '', 11)
+    pdf.cell(50, 8, str(p_data['POSITION']), ln=True)
+
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(40, 8, "OUTLOOK:", border=0)
+    pdf.set_font("Arial", '', 11)
+    pdf.cell(50, 8, str(p_data['STRATEGIC_OUTLOOK']), ln=True)
+    pdf.ln(5)
+
+    # 3. Dynamic Narrative Scouting Report
     pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, "Economic Valuation", ln=True)
-    pdf.set_font("Arial", size=12)
-    pdf.cell(50, 10, "Meta-Impact:", border=0)
-    pdf.cell(50, 10, f"{p_data['META_IMPACT']:.2f} Pts/100", ln=True)
-    pdf.cell(50, 10, "Market Value:", border=0)
-    pdf.cell(50, 10, f"${p_data['MARKET_VALUE']:,.0f}", ln=True)
-    pdf.cell(50, 10, "Contract Cost:", border=0)
-    pdf.cell(50, 10, f"${p_data['CONTRACT_COST']:,.0f}", ln=True)
-    pdf.cell(50, 10, "Surplus Value:", border=0)
-    pdf.cell(50, 10, f"${p_data['SURPLUS_VALUE']:,.0f}", ln=True)
+    pdf.cell(0, 10, "Executive Scouting Report", ln=True)
+    pdf.set_font("Arial", 'I', 11)
+
+    # Generate Narrative Logic
+    arch = p_data['ARCHETYPE_NAME']
+    impact = p_data['META_IMPACT']
+    ppg = p_data['PPG']
+
+    narrative = ""
+    if arch == "Floor General":
+        narrative = f"{p_data['PLAYER_NAME']} functions as a primary offensive engine, leveraging elite range and play-initiation skills to manipulate opposing defenses. "
+    elif arch == "Rim Protector":
+        narrative = f"{p_data['PLAYER_NAME']} provides elite interior structural integrity, serving as a high-gravity defensive anchor and vertical spacer. "
+    elif arch == "Movement Shooter":
+        narrative = f"{p_data['PLAYER_NAME']} is a premier floor-stretcher whose perimeter gravity creates significant operating windows for interior slashers. "
+    elif arch == "Self-Created Scorer":
+        narrative = f"{p_data['PLAYER_NAME']} excels as an isolation-heavy bucket-getter, capable of generating high-value looks under defensive duress. "
+    else:
+        narrative = f"{p_data['PLAYER_NAME']} serves as a versatile {arch}, providing balanced contributions across multiple phases of play. "
+
+    if impact > 1.5:
+        narrative += "Statistically, they rank as a top-tier impact outlier, driving winning across almost every lineup combination."
+    elif impact > 0:
+        narrative += f"With a positive meta-impact of {impact:.2f}, they function as a highly efficient rotation piece."
+    else:
+        narrative += "While their current impact is neutral, their specific playstyle fingerprint provides strategic utility in targeted matchups."
+
+    pdf.multi_cell(0, 8, narrative, border=1)
     pdf.ln(10)
-    
+
+    # 4. Economic Valuation
     pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, "Skill DNA (Frequencies)", ln=True)
-    pdf.set_font("Arial", size=12)
-    dna_metrics = ['LOGO_FREQ', 'FLOATER_FREQ', 'POST_FREQ', 'SPOTUP_FREQ', 'ISOLATION_FREQ', 'RIM_PROT_FREQ']
-    for m in dna_metrics:
-        pdf.cell(50, 10, f"{m.replace('_', ' ')}:", border=0)
-        pdf.cell(50, 10, f"{p_data[m]:.1%}", ln=True)
-    
+    pdf.cell(0, 10, "Economic Valuation & Market Projection", ln=True)
+    pdf.set_font("Arial", '', 11)
+
+    valuation_data = [
+        ("Current PPG", f"{ppg:.1f}"),
+        ("Meta-Impact", f"{impact:.2f} Pts/100"),
+        ("Projected Market Value", f"${p_data['MARKET_VALUE']:,.0f}"),
+        ("Actual Contract Cost", f"${p_data['CONTRACT_COST']:,.0f}"),
+        ("Annual Surplus Value", f"${p_data['SURPLUS_VALUE']:,.0f}")
+    ]
+
+    for label, val in valuation_data:
+        pdf.set_font("Arial", 'B', 11)
+        pdf.cell(60, 8, label + ":", border=0)
+        pdf.set_font("Arial", '', 11)
+        pdf.cell(40, 8, val, ln=True)
+
+    pdf.ln(10)
+
+    # 5. Skill-DNA Breakdown
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, "Skill-DNA Fingerprint (Micro-Action Freq)", ln=True)
+    pdf.set_font("Arial", '', 11)
+
+    dna_metrics = [
+        ('LOGO_FREQ', 'Logo Range'), ('FLOATER_FREQ', 'Floater/Touch'),
+        ('POST_FREQ', 'Post-Up'), ('SPOTUP_FREQ', 'Spot-Up'),
+        ('ISOLATION_FREQ', 'Isolation'), ('RIM_PROT_FREQ', 'Rim Protection')
+    ]
+
+    for key, label in dna_metrics:
+        pdf.set_font("Arial", 'B', 11)
+        pdf.cell(60, 8, label + ":", border=0)
+        pdf.set_font("Arial", '', 11)
+        pdf.cell(40, 8, f"{p_data[key]:.1%}", ln=True)
+
     return bytes(pdf.output())
