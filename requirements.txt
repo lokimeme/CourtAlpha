@@ -5,3 +5,6 @@ scikit-learn
 xgboost
 streamlit
 fpdf2
+plotly
+altair
+scipy
