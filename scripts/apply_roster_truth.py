@@ -264,6 +264,45 @@ def apply_roster_truth():
 
     # 3. Synchronize contracts and metrics
     logger.info("Aligning contracts with validated truth...")
+    
+    # MANUAL CONTRACT INJECTIONS (For players missing from Spotrac scrape)
+    logger.info("Injecting missing contract data...")
+    manual_contracts = [
+        ('Keon Ellis', 2301587),
+        ('Victor Wembanyama', 13531752),
+        ('Deni Avdija', 13750000),
+        ('Brandon Miller', 12348600),
+        ('Keyonte George', 4031640),
+        ('Austin Reaves', 13440707),
+        ('Nickeil Alexander-Walker', 4500000),
+        ('Jalen Duren', 4478640),
+        ('R.J. Barrett', 26750000),
+        ('Rui Hachimura', 18259259),
+        ('Christian Braun', 2449200),
+        ('Peyton Watson', 2325840),
+        ('Naz Reid', 13978480),
+        ('Coby White', 12000000),
+        ('Ayo Dosunmu', 7000000),
+        ('Sam Hauser', 15000000),
+        ('Derrick White', 18000000),
+        ('Payton Pritchard', 7500000),
+        ('Norman Powell', 18000000),
+        ('Tre Jones', 10000000),
+        ('Anfernee Simons', 25000000),
+        ('Collin Sexton', 18000000),
+        ('Herbert Jones', 13500000),
+        ('Luguentz Dort', 16000000),
+        ('Jared McCain', 4000000),
+        ('Cooper Flagg', 10000000),
+        ('Ace Bailey', 9000000),
+        ('Alex Sarr', 10000000),
+        ('Bub Carrington', 4000000),
+        ('V.J. Edgecombe', 8000000)
+    ]
+    for p_name, salary in manual_contracts:
+        con.execute("DELETE FROM contracts WHERE PLAYER_NAME = ?", [p_name])
+        con.execute("INSERT INTO contracts (PLAYER_NAME, RAW_NAME, TEAM, POSITION, SALARY) VALUES (?, ?, 'UNK', 'N/A', ?)", [p_name, p_name, salary])
+
     con.execute("UPDATE contracts SET PLAYER_NAME = TRIM(PLAYER_NAME)")
     con.execute("""
         UPDATE contracts
