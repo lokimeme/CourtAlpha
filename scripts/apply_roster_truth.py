@@ -67,7 +67,7 @@ ROSTERS = {
         ('Santi Aldama', 'PF'), ('Taylor Hendricks', 'PF'), ('Brandon Clarke', 'PF'), ('Taj Gibson', 'C')
     ],
     'Hawks': [
-        ('CJ McCollum', 'PG'), ('Nickeil Alexander-Walker', 'SG'), ('Dyson Daniels', 'SF'), ('Jalen Johnson', 'PF'),
+        ('CJ McCollum', 'PG'), ('Nickeil Alexander-Walker', 'SF'), ('Dyson Daniels', 'SG'), ('Jalen Johnson', 'PF'),
         ('Onyeka Okongwu', 'C'), ('Gabe Vincent', 'PG'), ('Keaton Wallace', 'PG'), ('Buddy Hield', 'SG'),
         ('Corey Kispert', 'SF'), ('Zaccharie Risacher', 'SF'), ('Jonathan Kuminga', 'PF'), ('Asa Newell', 'PF'),
         ('Mouhamed Gueye', 'PF'), ('Jock Landale', 'C'), ('Tony Bradley', 'C'), ('Christian Koloko', 'C')

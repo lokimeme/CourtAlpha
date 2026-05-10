@@ -53,8 +53,8 @@ def run_final_ml_pipeline():
     # Use 5 games / 50 FGA to keep stars like Curry
     eff_df = eff_df[(eff_df['GP'] >= 5) & (eff_df['FGA'] >= 50)]
     
-    # Calculate real PPG
-    eff_df['PPG'] = eff_df['TOTAL_PTS'] / eff_df['GP']
+    # Calculate real PPG (Cap GP at 82 to handle simulation artifacts)
+    eff_df['PPG'] = eff_df['TOTAL_PTS'] / eff_df['GP'].clip(upper=82)
     
     # X_EFG_PCT needs a separate query or join to be safe
     xeff_query = f"""
