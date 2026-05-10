@@ -69,20 +69,26 @@ def load_data():
         if 'TEAM' not in df.columns: df['TEAM'] = "Unknown"
         if 'POSITION' not in df.columns: df['POSITION'] = "N/A"
         
-    # 3. Spatial Intelligence (Spacing & Rim Gravity)
+    # 3. Spatial Intelligence (4-Zone Distribution)
     spatial_metrics = con.execute("""
         SELECT 
             PLAYER_NAME,
-            SUM(CASE WHEN (SQRT(BIN_X*BIN_X + BIN_Y*BIN_Y) < 80) THEN SHOT_COUNT ELSE 0 END)::FLOAT / SUM(SHOT_COUNT) as RIM_PRESSURE,
-            SUM(CASE WHEN (SQRT(BIN_X*BIN_X + BIN_Y*BIN_Y) > 230 OR (ABS(BIN_X) >= 220 AND BIN_Y <= 140)) THEN SHOT_COUNT ELSE 0 END)::FLOAT / SUM(SHOT_COUNT) as SPACING_RATING
+            SUM(CASE WHEN (SQRT(BIN_X*BIN_X + BIN_Y*BIN_Y) < 80) THEN SHOT_COUNT ELSE 0 END)::FLOAT / SUM(SHOT_COUNT) as RIM_FREQ,
+            SUM(CASE WHEN (SQRT(BIN_X*BIN_X + BIN_Y*BIN_Y) BETWEEN 80 AND 235) THEN SHOT_COUNT ELSE 0 END)::FLOAT / SUM(SHOT_COUNT) as MID_FREQ,
+            SUM(CASE WHEN (ABS(BIN_X) >= 220 AND BIN_Y <= 92) THEN SHOT_COUNT ELSE 0 END)::FLOAT / SUM(SHOT_COUNT) as CORNER_3_FREQ,
+            SUM(CASE WHEN (SQRT(BIN_X*BIN_X + BIN_Y*BIN_Y) > 235 AND BIN_Y > 92) THEN SHOT_COUNT ELSE 0 END)::FLOAT / SUM(SHOT_COUNT) as WING_3_FREQ
         FROM player_shot_density
         GROUP BY PLAYER_NAME
     """).df()
     df = df.merge(spatial_metrics, on='PLAYER_NAME', how='left')
     
-    # Fill spatial metrics specifically with 0, not the whole dataframe
-    df['RIM_PRESSURE'] = df['RIM_PRESSURE'].fillna(0)
-    df['SPACING_RATING'] = df['SPACING_RATING'].fillna(0)
+    # Fill spatial metrics specifically with 0
+    for col in ['RIM_FREQ', 'MID_FREQ', 'CORNER_3_FREQ', 'WING_3_FREQ']:
+        df[col] = df[col].fillna(0)
+    
+    # Legacy aliases for UI compatibility
+    df['RIM_PRESSURE'] = df['RIM_FREQ']
+    df['SPACING_RATING'] = df['CORNER_3_FREQ'] + df['WING_3_FREQ']
     
     df['TEAM'] = df['TEAM'].fillna("Unknown")
     df['POSITION'] = df['POSITION'].fillna("N/A")
@@ -136,7 +142,7 @@ def optimize_lineup(star_name, players_df, strategy="Win Now"):
     star = players_df[players_df['PLAYER_NAME'] == star_name].iloc[0]
     others = players_df[players_df['PLAYER_NAME'] != star_name].copy()
     
-    # 1. Base Scoring logic based on strategy
+    # 1. Base Scoring logic
     if strategy == "Cap-Balanced":
         others['BASE_SCORE'] = others['META_IMPACT'] + (others['SURPLUS_VALUE'] / 20_000_000)
     elif strategy == "Budget Build":
@@ -144,41 +150,27 @@ def optimize_lineup(star_name, players_df, strategy="Win Now"):
     else:
         others['BASE_SCORE'] = others['META_IMPACT']
 
-    # 2. Spatial Fit Logic
-    star_rim = star['RIM_PRESSURE']
-    star_space = star['SPACING_RATING']
+    # 2. Geometry Complementarity Engine
+    # We want to fill the "gaps" in the star's shooting profile
+    star_zones = np.array([star['RIM_FREQ'], star['MID_FREQ'], star['CORNER_3_FREQ'], star['WING_3_FREQ']])
     
-    def calculate_fit(row):
-        fit_bonus = 0
-        # 1. Spatial Complementarity
-        if star_rim > 0.4:
-            fit_bonus += row['SPACING_RATING'] * 12.0  # Slashers prioritize floor spacers
-        if star_space > 0.4:
-            fit_bonus += row['RIM_PRESSURE'] * 8.0    # Spacers prioritize interior threats
-            
-        # 2. Archetype Synergy
+    def calculate_geometry_fit(row):
+        candidate_zones = np.array([row['RIM_FREQ'], row['MID_FREQ'], row['CORNER_3_FREQ'], row['WING_3_FREQ']])
+        
+        # Complementarity Score: High bonus when candidate excels where star is absent
+        fit_vector = (1.0 - star_zones) * candidate_zones
+        fit_bonus = np.sum(fit_vector) * 15.0 # Weight for spatial diversity
+        
+        # Special Archetype Synergy
         s_arch = star['ARCHETYPE_NAME']
         r_arch = row['ARCHETYPE_NAME']
+        if s_arch == "Floor General" and r_arch in ["Interior Finisher", "Rim Protector"]: fit_bonus += 5.0
+        if s_arch == "Two-Way Connector" and r_arch == "Self-Created Scorer": fit_bonus += 6.0
+        if s_arch == "Interior Finisher" and r_arch == "Floor General": fit_bonus += 7.0
         
-        if s_arch == "Floor General":
-            if r_arch in ["Interior Finisher", "Rim Protector"]: fit_bonus += 5.0 # Roll threats
-            if r_arch == "Movement Shooter": fit_bonus += 4.0 # Kick-out targets
-            
-        elif s_arch == "Two-Way Connector": # Jalen Johnson
-            if r_arch == "Self-Created Scorer": fit_bonus += 6.0 # Needs a primary engine to connect
-            if r_arch == "Rim Protector": fit_bonus += 4.0 # Support behind his versatility
-            
-        elif s_arch == "Interior Finisher": # Kuminga
-            if r_arch == "Floor General": fit_bonus += 7.0 # Needs a creator to find him
-            if r_arch == "Defensive Specialist": fit_bonus += 3.0 # Wing defense support
-            
-        elif s_arch == "Self-Created Scorer": # Wemby / Luka
-            if r_arch in ["Defensive Specialist", "Two-Way Connector"]: fit_bonus += 5.0 # Defensive glue
-            if r_arch == "Movement Shooter": fit_bonus += 3.0 # Space
-            
         return fit_bonus
 
-    others['FIT_SCORE'] = others.apply(calculate_fit, axis=1)
+    others['FIT_SCORE'] = others.apply(calculate_geometry_fit, axis=1)
     others['OPT_SCORE'] = others['BASE_SCORE'] + others['FIT_SCORE']
 
     # 3. Initialize Lineup
@@ -198,34 +190,26 @@ def optimize_lineup(star_name, players_df, strategy="Win Now"):
         "C": ["Rim Protector", "Defensive Specialist", "Post Specialist"]
     }
     
-    # 4. Fill remaining slots
+    # 4. Fill remaining slots deterministically
     for i in range(5):
         if lineup[i] is not None: continue
         
         target_pos = standard_pos[i]
         possible = others[others['INFERRED_POSITION'] == target_pos].copy()
         
-        # Dynamic Spacing Check: If current lineup is clogged, prioritize spacers
+        # Dynamic Spacing Check: Ensure the unit isn't too crowded
         current_spacing = sum([p['SPACING_RATING'] for p in lineup if p is not None])
-        if current_spacing < 0.6: # Relaxed slightly for more variety
+        if current_spacing < 0.6: 
             possible['OPT_SCORE'] += possible['SPACING_RATING'] * 15.0
 
-        preferred = possible[possible['ARCHETYPE_NAME'].isin(roles[target_pos])]
-        
-        # Variety Logic: Add significant random noise to break ties and rotate similar fits
-        # Using a wider scale (0.5 pts) to ensure different outcomes on refresh
-        noise = np.random.normal(0, 0.5, size=len(possible))
-        possible['OPT_SCORE'] += noise
-
-        if not preferred.empty:
-            best_fit = preferred.sort_values(by='OPT_SCORE', ascending=False).iloc[0]
-        elif not possible.empty:
+        if not possible.empty:
             best_fit = possible.sort_values(by='OPT_SCORE', ascending=False).iloc[0]
+            lineup[i] = best_fit
+            others = others[others['PLAYER_NAME'] != best_fit['PLAYER_NAME']]
         else:
             best_fit = others.sort_values(by='OPT_SCORE', ascending=False).iloc[0]
-            
-        lineup[i] = best_fit
-        others = others[others['PLAYER_NAME'] != best_fit['PLAYER_NAME']]
+            lineup[i] = best_fit
+            others = others[others['PLAYER_NAME'] != best_fit['PLAYER_NAME']]
         
     return pd.DataFrame(lineup)
 
