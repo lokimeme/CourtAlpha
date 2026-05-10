@@ -323,13 +323,13 @@ else:
             st.subheader("Official Performance Data")
             c1, c2 = st.columns(2)
             with c1:
+                st.metric("PPG", f"{p['PPG']:.1f}")
                 st.metric("Rebounds", f"{p['REB']:.1f}")
                 st.metric("Assists", f"{p['AST']:.1f}")
-                st.metric("FG%", f"{p['FG_PCT']:.1%}")
             with c2:
+                st.metric("FG%", f"{p['FG_PCT']:.1%}")
                 st.metric("Steals", f"{p['STL']:.1f}")
                 st.metric("Blocks", f"{p['BLK']:.1f}")
-                st.metric("3PT%", f"{p['FG3_PCT']:.1%}")
 
             st.markdown("---")
             try:
@@ -393,12 +393,12 @@ else:
                 st.subheader("Shot Location Heat Map")
                 shot_df = load_shot_data(player_name)
                 if not shot_df.empty:
-                    heatmap = alt.Chart(shot_df).mark_rect().encode(
-                        x=alt.X('LOC_X:Q', title="Court Width"),
-                        y=alt.Y('LOC_Y:Q', title="Court Length"),
-                        color=alt.Color('SHOT_COUNT:Q', scale=alt.Scale(scheme='inferno'), title="Shot Density")
-                    ).properties(height=400)
-                    st.altair_chart(heatmap, use_container_width=True)
+                    from scripts.visual_engine import ShotChartEngine
+                    viz = ShotChartEngine()
+                    # Rename columns for visual_engine compatibility if necessary
+                    shot_df = shot_df.rename(columns={'LOC_X': 'BIN_X', 'LOC_Y': 'BIN_Y'})
+                    fig = viz.create_lineup_heatmap(shot_df, title=f"Scoring Gravity: {player_name}")
+                    st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.info("No spatial shot data available for this player.")
 

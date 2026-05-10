@@ -34,6 +34,7 @@ def prepare_deploy_db():
         WHERE pbp.PLAYER_NAME IS NOT NULL 
           AND LOC_X IS NOT NULL
           AND ACTION_TYPE IN ('Made Shot', 'Missed Shot')
+          AND pbp.SEASON = '2025-26'
         GROUP BY 1, 2, 3
     """
     src_conn.execute("CREATE TABLE tgt.player_shot_density AS " + density_query)
