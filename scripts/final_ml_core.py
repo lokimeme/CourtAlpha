@@ -26,39 +26,49 @@ def run_final_ml_pipeline():
     """
     gp_df = con.execute(gp_query).df()
 
-    efficiency_query = f"""
+    # Calculate Total Points including Free Throws
+    pts_query = f"""
         SELECT 
             PLAYER_NAME,
-            COUNT(*) as FGA,
-            SUM(CASE WHEN SHOT_MADE_FLAG = 1 THEN 
-                CASE WHEN SHOT_ZONE LIKE '%3' THEN 3 ELSE 2 END
-                ELSE 0 END) as TOTAL_PTS,
-            SUM(CASE WHEN SHOT_MADE_FLAG = 1 THEN 
+            SUM(CASE 
+                WHEN ACTION_TYPE = 'Made Shot' THEN 
+                    CASE WHEN SHOT_ZONE LIKE '%3' THEN 3 ELSE 2 END
+                WHEN ACTION_TYPE = 'Free Throw' AND DESCRIPTION NOT LIKE 'MISS %' THEN 1
+                ELSE 0 
+            END) as TOTAL_PTS,
+            COUNT(*) FILTER (WHERE ACTION_TYPE IN ('Made Shot', 'Missed Shot')) as FGA,
+            SUM(CASE WHEN ACTION_TYPE = 'Made Shot' THEN 
                 CASE WHEN SHOT_ZONE LIKE '%3' THEN 1.5 ELSE 1.0 END
-                ELSE 0 END) / COUNT(*) as EFG_PCT,
-            SUM(X_POINTS / CASE WHEN SHOT_ZONE LIKE '%3' THEN 3.0 ELSE 2.0 END) / COUNT(*) as X_EFG_PCT
+                ELSE 0 END)::FLOAT / NULLIF(COUNT(*) FILTER (WHERE ACTION_TYPE IN ('Made Shot', 'Missed Shot')), 0) as EFG_PCT
         FROM play_by_play
         WHERE PLAYER_NAME IS NOT NULL
-          AND ACTION_TYPE IN ('Made Shot', 'Missed Shot')
-          AND PLAYER_NAME NOT LIKE '%Putback%'
           AND SEASON = '{CURRENT_SEASON}'
+          AND PLAYER_NAME NOT LIKE '%Putback%'
         GROUP BY PLAYER_NAME
-        HAVING COUNT(*) > 50
     """
-    eff_df = con.execute(efficiency_query).df()
+    pts_df = con.execute(pts_query).df()
     
-    # Merge GP and filter by 5 games in the CURRENT season and 50 FGA
-    eff_df = eff_df.merge(gp_df, on='PLAYER_NAME', how='inner')
+    # Merge and filter
+    eff_df = pts_df.merge(gp_df, on='PLAYER_NAME', how='inner')
+    # Use 5 games / 50 FGA to keep stars like Curry
     eff_df = eff_df[(eff_df['GP'] >= 5) & (eff_df['FGA'] >= 50)]
     
     # Calculate real PPG
     eff_df['PPG'] = eff_df['TOTAL_PTS'] / eff_df['GP']
+    
+    # X_EFG_PCT needs a separate query or join to be safe
+    xeff_query = f"""
+        SELECT PLAYER_NAME, AVG(X_POINTS / CASE WHEN SHOT_ZONE LIKE '%3' THEN 3.0 ELSE 2.0 END) as X_EFG_PCT
+        FROM play_by_play
+        WHERE PLAYER_NAME IS NOT NULL AND ACTION_TYPE IN ('Made Shot', 'Missed Shot') AND SEASON = '{CURRENT_SEASON}'
+        GROUP BY PLAYER_NAME
+    """
+    xeff_df = con.execute(xeff_query).df()
+    eff_df = eff_df.merge(xeff_df, on='PLAYER_NAME', how='left').fillna(0)
 
     logger.info(f"Integrating impact for {len(eff_df)} active players...")
     
-    # NEW: Pull from standalone player_impact table
     rapm_df = con.execute("SELECT PLAYER_NAME, ADJUSTED_IMPACT FROM player_impact").df()
-    
     master_df = eff_df.merge(rapm_df, on='PLAYER_NAME', how='left').fillna(0)
     
     lmbda = 500
@@ -70,6 +80,8 @@ def run_final_ml_pipeline():
             PLAYER_NAME,
             COUNT(*) FILTER (WHERE MICRO_ACTION = 'Logo Range')::FLOAT / COUNT(*) as LOGO_FREQ,
             COUNT(*) FILTER (WHERE MICRO_ACTION = 'Floater / Touch')::FLOAT / COUNT(*) as FLOATER_FREQ,
+            COUNT(*) FILTER (WHERE MICRO_ACTION = 'Lob Finish')::FLOAT / COUNT(*) as LOB_FREQ,
+            COUNT(*) FILTER (WHERE MICRO_ACTION = 'Off-Ball Cut')::FLOAT / COUNT(*) as CUT_FREQ,
             COUNT(*) FILTER (WHERE MICRO_ACTION = 'Post-Up / Hook')::FLOAT / COUNT(*) as POST_FREQ,
             COUNT(*) FILTER (WHERE MICRO_ACTION = 'Assisted 3PT')::FLOAT / COUNT(*) as SPOTUP_FREQ,
             COUNT(*) FILTER (WHERE MICRO_ACTION = 'Self-Created (Space)')::FLOAT / COUNT(*) as ISOLATION_FREQ,
@@ -84,7 +96,6 @@ def run_final_ml_pipeline():
     
     cluster_df = master_df.merge(skill_DNA, on='PLAYER_NAME', how='inner')
     
-    # Archetype features should be style-based, NOT impact-based to avoid bias
     feature_cols = [c for c in cluster_df.columns if 'FREQ' in c]
     features = cluster_df[feature_cols].fillna(0)
     
@@ -96,53 +107,41 @@ def run_final_ml_pipeline():
 
     # Dynamic Archetype Labeling
     centroids = kmeans.cluster_centers_
-    # LOGO, FLOATER, POST, SPOTUP, ISOLATION, RIM_PROT
-    
     mapping = {}
     remaining_ids = list(range(8))
     
-    # 1. Floor General: Highest LOGO
-    idx = np.argmax(centroids[:, 0])
+    idx = np.argmax(centroids[:, 0]) # Floor General: Highest LOGO
     mapping[idx] = "Floor General"
     remaining_ids.remove(idx)
     
-    # 2. Self-Created Scorer: Highest ISOLATION (among remaining)
-    idx = remaining_ids[np.argmax(centroids[remaining_ids, 4])]
+    idx = remaining_ids[np.argmax(centroids[remaining_ids, 4])] # Self-Created Scorer: Highest ISOLATION
     mapping[idx] = "Self-Created Scorer"
     remaining_ids.remove(idx)
     
-    # 3. Post Specialist: Highest POST (among remaining)
-    idx = remaining_ids[np.argmax(centroids[remaining_ids, 2])]
+    idx = remaining_ids[np.argmax(centroids[remaining_ids, 2])] # Post Specialist: Highest POST
     mapping[idx] = "Post Specialist"
     remaining_ids.remove(idx)
     
-    # 4. Movement Shooter: Highest SPOTUP (among remaining)
-    idx = remaining_ids[np.argmax(centroids[remaining_ids, 3])]
+    idx = remaining_ids[np.argmax(centroids[remaining_ids, 3])] # Movement Shooter: Highest SPOTUP
     mapping[idx] = "Movement Shooter"
     remaining_ids.remove(idx)
     
-    # 5. Defensive Specialist: Highest RIM_PROT (among remaining)
-    idx = remaining_ids[np.argmax(centroids[remaining_ids, 5])]
+    idx = remaining_ids[np.argmax(centroids[remaining_ids, 5])] # Defensive Specialist: Highest RIM_PROT
     mapping[idx] = "Defensive Specialist"
     remaining_ids.remove(idx)
     
-    # 6. Two-Way Connector: Highest FLOATER (among remaining)
-    idx = remaining_ids[np.argmax(centroids[remaining_ids, 1])]
+    idx = remaining_ids[np.argmax(centroids[remaining_ids, 1])] # Two-Way Connector: Highest FLOATER
     mapping[idx] = "Two-Way Connector"
     remaining_ids.remove(idx)
 
-    # 7. Rim Protector: Highest RIM_PROT (of last 2)
-    idx = remaining_ids[np.argmax(centroids[remaining_ids, 5])]
+    idx = remaining_ids[np.argmax(centroids[remaining_ids, 5])] # Rim Protector: Highest RIM_PROT (of last 2)
     mapping[idx] = "Rim Protector"
     remaining_ids.remove(idx)
     
-    # 8. Interior Finisher: Last one
     mapping[remaining_ids[0]] = "Interior Finisher"
     
     cluster_df['ARCHETYPE_NAME'] = cluster_df['ARCHETYPE_ID'].map(mapping)
 
-    logger.info("Updating player_metrics table with high-fidelity scores...")
-    
     con.execute("DROP TABLE IF EXISTS player_metrics")
     con.execute("""
         CREATE TABLE player_metrics (
@@ -174,7 +173,7 @@ def run_final_ml_pipeline():
     """)
 
     con.close()
-    logger.info("Phase 2 ML Core successfully executed.")
+    logger.info("Phase 2 ML Core successfully executed with accurate PPG.")
 
 if __name__ == "__main__":
     run_final_ml_pipeline()
