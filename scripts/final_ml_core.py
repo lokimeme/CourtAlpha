@@ -53,6 +53,16 @@ def run_final_ml_pipeline():
     # Use 5 games / 50 FGA to keep stars like Curry
     eff_df = eff_df[(eff_df['GP'] >= 5) & (eff_df['FGA'] >= 50)]
     
+    # NEW: Filter by Age (Exclude legacy/historic artifacts)
+    logger.info("Purging legacy/historic players from active pool...")
+    age_filter = """
+        SELECT PLAYER_NAME 
+        FROM player_metadata 
+        WHERE date_diff('year', CAST(BIRTHDATE AS DATE), current_date) BETWEEN 18 AND 45
+    """
+    active_pool = con.execute(age_filter).df()['PLAYER_NAME'].tolist()
+    eff_df = eff_df[eff_df['PLAYER_NAME'].isin(active_pool)]
+    
     # Calculate real PPG (Cap GP at 82 to handle simulation artifacts)
     eff_df['PPG'] = eff_df['TOTAL_PTS'] / eff_df['GP'].clip(upper=82)
     
