@@ -38,6 +38,10 @@ class FrontOfficeSimulator:
                 year_index
             )
             
+            # Probabilistic Simulation: Contract Expiration
+            # In the absence of a live multi-year salary-cap projection API, 
+            # we use a rolling probability factor (increasing by 20% per year) 
+            # to simulate roster attrition and free-agency cycles.
             is_expired = np.random.random() < (0.2 * year_index)
             status = "Under Contract" if not is_expired else "Free Agent"
             
