@@ -475,7 +475,7 @@ else:
 
         # 5. Roster Geometry Visualizer
         st.markdown("---")
-        st.subheader("📐 Unit Floor Geometry")
+        st.subheader("Unit Floor Geometry")
         st.info("Analyzing the spatial overlap and gravitational centers of this 5-man unit.")
         
         lineup_names = rec_lineup['PLAYER_NAME'].tolist()
@@ -526,7 +526,7 @@ else:
                 st.write(f"- {note}")
                 
         # 3. Butterfly Effect (Identity Analysis)
-        st.subheader("🦋 Strategic Butterfly Effect")
+        st.subheader("Strategic Butterfly Effect")
         
         # Calculate Baseline
         base_impact = current_roster['META_IMPACT'].mean()
