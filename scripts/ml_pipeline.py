@@ -101,8 +101,8 @@ def run_ml_pipeline():
             
             xefg = calculate_xefg_engine(player_pbp)
             
-            # Deterministic Impact Heuristic: Shooting efficiency relative to league baseline (52% eFG)
-            # This replaces the randomized benchmark with a stable, performance-linked metric.
+            # efficiency heuristic - compare vs 52% league baseline efg
+            # replaces the old random gen for better data integrity
             raw_impact = (float(xefg) - 0.52) 
             shrunk_impact = shrink_value(raw_impact, len(player_pbp), prior=0.0, lmbda=500)
             

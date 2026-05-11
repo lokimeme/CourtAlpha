@@ -1,16 +1,11 @@
 """
-CourtAlpha Roster Truth & Contract Synchronization
---------------------------------------------------
-This script acts as the definitive source for roster alignment and contract data.
-It reconciles the following data sources:
-1. Official 2025-26 Team Rosters (derived from Sporcle/PDF truth).
-2. Spotrac Contract Data (supplemented by manual injections for missing rotation players).
-3. Play-by-Play Name Mapping (normalizing PBP abbreviations to full roster names).
-
-Integrity Logic:
-- Names are normalized using NFD Unicode decomposition to handle accents.
-- Manual Contract Injections: Applied to key players where automated scraping fails 
-  or where real-time trades/signings haven't been reflected in standard feeds.
+CourtAlpha Roster and Contract sync
+-----------------------------------
+This is the main source of truth for rosters/contracts.
+Reconciles:
+1. 25-26 Team Rosters (from Sporcle/PDF)
+2. Spotrac data (plus manual overrides for rotation guys)
+3. PBP name mapping - normalization for accents/nicknames
 """
 
 import duckdb
@@ -25,6 +20,7 @@ DB_PATH = 'data/courtalpha.duckdb'
 
 def norm(name):
     if not name: return ""
+    # drop accents for easier PBP matching
     name = "".join(c for c in unicodedata.normalize('NFD', name) if unicodedata.category(c) != 'Mn')
     name = name.replace('ć', 'c').replace('č', 'c').replace('š', 's').replace('ž', 'z')
     return name.strip()
@@ -281,41 +277,40 @@ def apply_roster_truth():
     logger.info("Aligning contracts with validated truth...")
     
     # MANUAL CONTRACT INJECTIONS
-    # These entries are required for players missing from automated Spotrac/nba_api 
-    # contract feeds or to override stale data for recently moved/signed players.
-    # Sources: Spotrac, HoopsHype, and official team press releases for the 2025-26 season.
+    # These entries fix missing data from Spotrac/nba_api or stale info
+    # from recent trades. mostly sourced from HoopsHype or team press releases.
     logger.info("Injecting missing contract data...")
     manual_contracts = [
-        ('Keon Ellis', 2301587), # 2-year standard deal
-        ('Victor Wembanyama', 13531752), # Rookie Scale (Year 3)
-        ('Deni Avdija', 13750000), # Descending Value Extension
-        ('Brandon Miller', 12348600), # Rookie Scale (Year 3)
-        ('Keyonte George', 4031640), # Rookie Scale (Year 3)
-        ('Austin Reaves', 13440707), # Early Bird Extension
-        ('Nickeil Alexander-Walker', 4500000), # Bi-Annual Exception
-        ('Jalen Duren', 4478640), # Rookie Scale (Year 4)
-        ('R.J. Barrett', 26750000), # Designated Rookie Extension
-        ('Rui Hachimura', 18259259), # Full Bird Rights Deal
-        ('Christian Braun', 2449200), # Rookie Scale (Year 4)
-        ('Peyton Watson', 2325840), # Rookie Scale (Year 4)
+        ('Keon Ellis', 2301587), # 2-year deal
+        ('Victor Wembanyama', 13531752), # Rookie Scale Y3
+        ('Deni Avdija', 13750000), # Descending extension
+        ('Brandon Miller', 12348600), # Rookie Scale Y3
+        ('Keyonte George', 4031640), # Rookie Scale Y3
+        ('Austin Reaves', 13440707), # Early Bird Deal
+        ('Nickeil Alexander-Walker', 4500000), # Bi-Annual execption
+        ('Jalen Duren', 4478640), # Rookie Scale Y4
+        ('R.J. Barrett', 26750000), # Desig. Rookie Ext.
+        ('Rui Hachimura', 18259259), # Full Bird Rights
+        ('Christian Braun', 2449200), # Rookie Scale Y4
+        ('Peyton Watson', 2325840), # Rookie Scale Y4
         ('Naz Reid', 13978480), # MLE Extension
-        ('Coby White', 12000000), # Front-loaded structure
+        ('Coby White', 12000000), # front-loaded deal
         ('Ayo Dosunmu', 7000000), # Standard rotation deal
-        ('Sam Hauser', 15000000), # 3&D Market Premium Extension
-        ('Derrick White', 18000000), # Extension (Below Market Value)
-        ('Payton Pritchard', 7500000), # Backup PG Market Rate
-        ('Norman Powell', 18000000), # Mid-tier starter scale
-        ('Tre Jones', 10000000), # Value floor general deal
-        ('Anfernee Simons', 25000000), # Second Option scale
-        ('Collin Sexton', 18000000), # 6th Man Engine scale
-        ('Herbert Jones', 13500000), # Elite Defensive Discount
-        ('Luguentz Dort', 16000000), # Enforcer scale
-        ('Jared McCain', 4000000), # 2024 First Round Scale
-        ('Cooper Flagg', 10000000), # 2025 Projected #1 Pick Scale
-        ('Ace Bailey', 9000000), # 2025 Projected Top 3 Scale
-        ('Alex Sarr', 10000000), # 2024 Top 2 Scale
-        ('Bub Carrington', 4000000), # 2024 Mid-First Scale
-        ('V.J. Edgecombe', 8000000) # 2025 Projected Top 5 Scale
+        ('Sam Hauser', 15000000), # 3&D Market Premium
+        ('Derrick White', 18000000), # Extension (team friendly)
+        ('Payton Pritchard', 7500000), # backup pg rate
+        ('Norman Powell', 18000000), # mid-tier starter
+        ('Tre Jones', 10000000), # Value floor general
+        ('Anfernee Simons', 25000000), # 2nd option scale
+        ('Collin Sexton', 18000000), # 6th man engine
+        ('Herbert Jones', 13500000), # Defense premium
+        ('Luguentz Dort', 16000000), # Enforcer / PoA defender
+        ('Jared McCain', 4000000), # '24 FRP scale
+        ('Cooper Flagg', 10000000), # '25 Projected #1
+        ('Ace Bailey', 9000000), # '25 Projected Top 3
+        ('Alex Sarr', 10000000), # '24 Top 2 scale
+        ('Bub Carrington', 4000000), # '24 Mid-First
+        ('V.J. Edgecombe', 8000000) # '25 Projected Top 5
     ]
     for p_name, salary in manual_contracts:
         con.execute("DELETE FROM contracts WHERE PLAYER_NAME = ?", [p_name])
