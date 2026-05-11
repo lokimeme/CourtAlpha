@@ -15,7 +15,7 @@ URL = 'https://www.spotrac.com/nba/contracts/'
 def normalize_name(name):
     if not name: return None
     name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii')
-    name = re.sub(r'\s+(Jr\.|III|II|IV|Sr\.)$', '', name)
+    # Keep Jr., III, etc. but clean extra whitespace
     return name.strip()
 
 def scrape_spotrac():
@@ -23,7 +23,7 @@ def scrape_spotrac():
     page = 1
     
     while True:
-        url = URL if page == 1 else f"{URL}page-{page}/"
+        url = URL if page == 1 else f"{URL}_/page/{page}/"
         logger.info(f"Fetching Spotrac data from {url}...")
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'

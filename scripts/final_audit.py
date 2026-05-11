@@ -125,7 +125,8 @@ def fix_everything():
         
     con.execute("""
         UPDATE contracts
-        SET TEAM = player_teams.TEAM
+        SET TEAM = player_teams.TEAM,
+            POSITION = player_teams.POSITION
         FROM player_teams
         WHERE contracts.PLAYER_NAME = player_teams.PLAYER_NAME
     """)

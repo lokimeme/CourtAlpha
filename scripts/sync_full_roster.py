@@ -33,7 +33,8 @@ def build_full_roster():
                 for _, row in roster_df.iterrows():
                     all_players.append({
                         'PLAYER_NAME': norm(row['PLAYER']),
-                        'TEAM': tricode
+                        'TEAM': tricode,
+                        'POSITION': row['POSITION']
                     })
                 logger.info(f"  Successfully synced {tricode}")
                 success = True
@@ -56,10 +57,10 @@ def build_full_roster():
     con = duckdb.connect('data/courtalpha.duckdb')
         
     con.execute("DROP TABLE IF EXISTS player_teams")
-    con.execute("CREATE TABLE player_teams (PLAYER_NAME VARCHAR, TEAM VARCHAR)")
+    con.execute("CREATE TABLE player_teams (PLAYER_NAME VARCHAR, TEAM VARCHAR, POSITION VARCHAR)")
     
     con.register('temp_roster', df)
-    con.execute("INSERT INTO player_teams SELECT PLAYER_NAME, TEAM FROM temp_roster")
+    con.execute("INSERT INTO player_teams SELECT PLAYER_NAME, TEAM, POSITION FROM temp_roster")
     
     con.close()
     logger.info("Full roster sync complete.")
