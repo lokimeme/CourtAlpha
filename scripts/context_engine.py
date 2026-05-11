@@ -12,43 +12,60 @@ class ContextSuppressionEngine:
         
     def calculate_team_spacing_scores(self):
         """
-        Calculates a 'Spacing Rating' for every team based on the average 3PT 
-        capabilities of the lineups a player is in.
+        Calculates a 'Spacing Rating' for every team based on the real spatial 
+        gravity of its players (3PT frequency and location).
         """
-        spacing_metrics = {
-            "OKC": 115.0,
-            "BOS": 120.0,
-            "DET": 92.0,
-            "ORL": 95.0,
-            "LAL": 102.0
-        }
-        return spacing_metrics
+        # Calculate real spacing rating from play-by-play data
+        query = """
+            WITH player_spacing AS (
+                SELECT 
+                    PLAYER_NAME,
+                    CAST(SUM(CASE WHEN (ABS(LOC_X) >= 220 AND LOC_Y <= 92) OR (SQRT(LOC_X*LOC_X + LOC_Y*LOC_Y) > 235 AND LOC_Y > 92) THEN 1 ELSE 0 END) AS FLOAT) / COUNT(*) as spacing_val
+                FROM play_by_play
+                WHERE ACTION_TYPE IN ('Made Shot', 'Missed Shot')
+                GROUP BY 1
+            )
+            SELECT t.TEAM, AVG(s.spacing_val) as avg_spacing
+            FROM player_spacing s
+            JOIN player_teams t ON s.PLAYER_NAME = t.PLAYER_NAME
+            GROUP BY 1
+        """
+        spacing_df = self.con.execute(query).df()
+        if spacing_df.empty: return {}
+        
+        # Normalize to a 0-100 scale where 100 is league average
+        mean_spacing = spacing_df['avg_spacing'].mean()
+        spacing_df['norm_spacing'] = (spacing_df['avg_spacing'] / (mean_spacing if mean_spacing > 0 else 1)) * 100
+        
+        return dict(zip(spacing_df['TEAM'], spacing_df['norm_spacing']))
 
-    def find_suppressed_talents(self, min_possessions=300):
+    def find_suppressed_talents(self, min_fga=100):
         """
         Flags players who have high expected eFG% (shot quality) 
         despite playing in low-spacing environments.
         """
         df = self.con.execute("""
-            SELECT PLAYER_NAME, SHRUNK_IMPACT, X_EFG_PCT, POSSESSIONS, FLAGS
-            FROM player_metrics
-            WHERE POSSESSIONS >= ?
-        """, [min_possessions]).df()
+            SELECT m.PLAYER_NAME, m.SHRUNK_IMPACT, m.X_EFG_PCT, m.FGA, t.TEAM
+            FROM player_metrics m
+            JOIN player_teams t ON m.PLAYER_NAME = t.PLAYER_NAME
+            WHERE m.FGA >= ?
+        """, [min_fga]).df()
         
         spacing_map = self.calculate_team_spacing_scores()
         
-        suppression_scores = []
-        for _, row in df.iterrows():
-            base_spacing = np.random.choice(list(spacing_map.values()))
+        def calc_suppression(row):
+            team_spacing = spacing_map.get(row['TEAM'], 100.0)
+            # Higher suppression when team spacing is below 100
+            suppression_factor = (100.0 - team_spacing) / 10.0
+            return max(0, suppression_factor * row['X_EFG_PCT'])
             
-            suppression_factor = (110 - base_spacing) / 10 * (row['X_EFG_PCT'] * 2)
-            suppression_scores.append(max(0, suppression_factor))
-            
-        df['SUPPRESSION_SCORE'] = suppression_scores
+        df['SUPPRESSION_SCORE'] = df.apply(calc_suppression, axis=1)
         
-        df['ADJUSTED_IMPACT'] = df['SHRUNK_IMPACT'] + (df['SUPPRESSION_SCORE'] * 1.5)
+        # Adjusted impact considering environment suppression
+        df['ADJUSTED_IMPACT'] = df['SHRUNK_IMPACT'] + (df['SUPPRESSION_SCORE'] * 0.1)
         
-        df['IS_HIDDEN_GEM'] = (df['SUPPRESSION_SCORE'] > 2.0) & (df['SHRUNK_IMPACT'] < 3.0)
+        # Hidden Gem: High suppression score but low current impact
+        df['IS_HIDDEN_GEM'] = (df['SUPPRESSION_SCORE'] > 0.5) & (df['SHRUNK_IMPACT'] < 0.005)
         
         return df.sort_values(by='SUPPRESSION_SCORE', ascending=False)
 

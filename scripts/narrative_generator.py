@@ -91,7 +91,25 @@ def generate_player_pdf(p_data):
 
     pdf.ln(10)
 
-    # 5. Skill-DNA Breakdown
+    # 5. Strategic Offseason Value
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, "Strategic Offseason Value & Trade Utility", ln=True)
+    pdf.set_font("Arial", '', 11)
+
+    surplus = p_data['SURPLUS_VALUE']
+    if surplus > 10000000:
+        utility = "ELITE ASSET: Highly positive surplus value makes this player a premier trade chip or foundational pillar."
+    elif surplus > 0:
+        utility = "EFFICIENT ROTATION: Value exceeds contract cost; providing high-level production relative to cap hit."
+    elif surplus > -10000000:
+        utility = "NEUTRAL VALUE: Market value is aligned with contract. Primarily a matching-salary piece in larger deals."
+    else:
+        utility = "DISTRESSED ASSET: Contract significantly exceeds current production. May require sweeteners for offloading."
+
+    pdf.multi_cell(0, 8, utility, border=1)
+    pdf.ln(5)
+
+    # 6. Skill-DNA Breakdown
     pdf.set_font("Arial", 'B', 14)
     pdf.cell(0, 10, "Skill-DNA Fingerprint (Micro-Action Freq)", ln=True)
     pdf.set_font("Arial", '', 11)

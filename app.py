@@ -308,6 +308,23 @@ else:
             color = "#00ffcc" if "Pillar" in p['STRATEGIC_OUTLOOK'] else "#ffcc00" if "Engine" in p['STRATEGIC_OUTLOOK'] else "#ffffff"
             st.markdown(f"### Outlook: <span style='color:{color}'>{p['STRATEGIC_OUTLOOK']}</span>", unsafe_allow_html=True)
             
+            # Offseason Strategic Value
+            surplus = p['SURPLUS_VALUE']
+            if surplus > 10000000:
+                offseason_val = "ELITE ASSET"
+                val_color = "#00ffcc"
+            elif surplus > 0:
+                offseason_val = "EFFICIENT"
+                val_color = "#ffcc00"
+            elif surplus > -10000000:
+                offseason_val = "NEUTRAL"
+                val_color = "#ffffff"
+            else:
+                offseason_val = "DISTRESSED"
+                val_color = "#ff4b4b"
+            
+            st.markdown(f"**Offseason Utility:** <span style='color:{val_color}; font-weight:bold;'>{offseason_val}</span>", unsafe_allow_html=True)
+            
             st.markdown("---")
             st.metric("Meta-Impact (Pts/100)", f"{p['META_IMPACT']:.2f}")
             st.metric("Market Value", format_currency(p['MARKET_VALUE']))
@@ -365,17 +382,18 @@ else:
             tab1, tab2, tab3 = st.tabs(["Metric Decomposition", "Skill DNA", "Shot Heat Map"])
             
             with tab1:
-                st.subheader("Metric Decomposition")
+                st.subheader("Internal Meta-Impact Analysis")
                 bench_data = pd.DataFrame({
-                    'Metric': ['Internal RAPM', 'LEBRON', 'EPM', 'DARKO'],
-                    'Value': [p['SHRUNK_IMPACT']*100, p['EXTERNAL_LEBRON'], p['EXTERNAL_EPM'], p['EXTERNAL_DARKO']]
+                    'Metric': ['Proprietary Meta-Impact'],
+                    'Value': [p['META_IMPACT']]
                 })
                 chart = alt.Chart(bench_data).mark_bar().encode(
-                    x=alt.X('Value:Q'),
+                    x=alt.X('Value:Q', title='Impact (Pts/100)'),
                     y=alt.Y('Metric:N', sort='-x'),
                     color=alt.condition(alt.datum.Value > 0, alt.value("#00ffcc"), alt.value("#ff4b4b"))
-                ).properties(height=350)
+                ).properties(height=150)
                 st.altair_chart(chart, use_container_width=True)
+                st.info("Meta-Impact is calculated using CourtAlpha's proprietary RAPM-Lite engine, adjusted for Bayesian Shrinkage and context suppression.")
             
             with tab2:
                 st.subheader("Skill DNA (Playstyle Frequencies)")
