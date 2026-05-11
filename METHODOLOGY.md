@@ -19,7 +19,7 @@ We translate statistical impact into financial leverage by comparing performance
 
 - **Market Valuation:** A dynamic model that calculates what a player *should* be paid based on their Meta-Impact, age trajectory, and archetype scarcity.
 - **Surplus Value:** The delta between a player’s **Market Value** and their **Actual Contract Cost**. This is the primary KPI for front-office efficiency.
-- **Offseason Strategic Outlook:** Categorizes players as *Pillars* (Max-level anchors), *Engines* (High-usage creators), or *Connectors* (Elite role players) to guide trade and free-agency targets.
+- **Offseason Strategic Outlook:** Categorizes players as *Championship Pillars* (Max-level anchors), *Offensive Engines* (High-usage creators), or *Efficiency Engines* (Elite surplus value assets) to guide trade and free-agency targets.
 
 ## 4. Spatial Intelligence & Gravity
 CourtAlpha uses raw (X, Y) coordinate data to map the floor geometry of every 5-man unit.

@@ -146,27 +146,42 @@ def run_economic_pipeline():
         if age >= 35: flags += " 📉 Age Risk"
         elif age <= 22: flags += " 📈 Upside"
         
+        # --- STRATEGIC OUTLOOK LOGIC (v2.9) ---
+        # Prioritizes production and impact over restrictive archetypes
         outlook = "Rotation Depth"
         
-        is_pillar_archetype = arch in ['Floor General', '3&D Wing', 'Elite Rim Protector', 'Point-of-Attack Defender']
-        if is_pillar_archetype and meta_impact > 0.5:
-            if cost > 30000000:
-                outlook = "Championship Pillar"
-                flags += " 🏛️ Pillar"
-            else:
-                outlook = "Elite Value Starter"
-                flags += " 🟢 Value"
+        # 1. Championship Pillars (Elite impact + Max-level investment)
+        is_elite_impact = meta_impact > 0.5
+        is_high_volume = ppg >= 22
+        is_max_salary = cost > 30000000
         
-        elif surplus > 15000000 and cost < 15000000:
+        if (is_elite_impact or is_high_volume) and is_max_salary:
+            outlook = "Championship Pillar"
+            flags += " 🏛️ Pillar"
+            
+        # 2. Offensive Engines (Primary creators / High volume, but maybe not max cost)
+        elif is_high_volume:
+            outlook = "Offensive Engine"
+            flags += " 🚀 Engine"
+            
+        # 3. Efficiency Engines (High surplus, usually on value/rookie deals)
+        elif surplus > 15000000 and cost < 20000000:
             outlook = "Efficiency Engine"
-            flags += " ⚙️ Engine"
-        
-        elif cost > 35000000 and meta_impact < 0:
+            flags += " ⚙️ Efficiency"
+            
+        # 4. Elite Value Starters (Positive impact on modest cost)
+        elif meta_impact > 0.2 and cost < 25000000:
+            outlook = "Elite Value Starter"
+            flags += " 🟢 Value"
+            
+        # 5. Distressed Assets (Toxic contracts)
+        elif cost > 35000000 and meta_impact < -0.1:
             outlook = "Negative Asset"
-            flags += " ⚠️ Toxic Contract"
+            flags += " ⚠️ Toxic"
 
+        # Global Surplus Flags
         if surplus > 15000000: 
-            if "Engine" not in flags: flags += " 💎 Elite Surplus"
+            if "Value" not in flags and "Efficiency" not in flags: flags += " 💎 Elite Surplus"
         elif surplus < -15000000: 
             flags += " ⚠️ Overpaid"
 
