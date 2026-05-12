@@ -11,17 +11,16 @@ st.set_page_config(page_title="CourtAlpha | Front Office Dashboard", layout="wid
 
 st.markdown("""
     <style>
-    .main {
-        background-color: #0e1117;
-    }
+    /* Translucent 'Glass' cards that work in both light and dark modes */
     .stMetric {
-        background-color: #1e2130;
+        background-color: rgba(128, 128, 128, 0.08);
         padding: 15px;
         border-radius: 10px;
-        border: 1px solid #3e4253;
+        border: 1px solid rgba(128, 128, 128, 0.2);
     }
-    .status-pillar { color: #00ffcc; font-weight: bold; }
-    .status-engine { color: #ffcc00; font-weight: bold; }
+    /* Brand-safe status colors with enough contrast for both themes */
+    .status-pillar { color: #00c0a0; font-weight: bold; }
+    .status-engine { color: #e6b800; font-weight: bold; }
     .status-risk { color: #ff4b4b; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
@@ -305,7 +304,7 @@ else:
             st.subheader(f"Profile: {player_name}")
             st.write(f"**Team:** {p['TEAM']} | **Position:** {p['POSITION']} | **Age:** {p['AGE']}")
             
-            color = "#00ffcc" if "Pillar" in p['STRATEGIC_OUTLOOK'] else "#ffcc00" if "Engine" in p['STRATEGIC_OUTLOOK'] else "#ffffff"
+            color = "#00c0a0" if "Pillar" in p['STRATEGIC_OUTLOOK'] else "#e6b800" if "Engine" in p['STRATEGIC_OUTLOOK'] else "#888888"
             st.markdown(f"### Outlook: <span style='color:{color}'>{p['STRATEGIC_OUTLOOK']}</span>", unsafe_allow_html=True)
             
             # Offseason Strategic Value
